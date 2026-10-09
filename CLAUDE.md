@@ -22,9 +22,12 @@ Distribution: all-in-one, with an Inno Setup installer like the user's other tra
 - **Noise suppressor:** DeepFilterNet3 is the default (best open-source option for keyboards and
   background voices; ~40 ms added latency is fine for Discord). RNNoise stays available as a
   lighter option; WebRTC NS too. Nothing open clearly beat DFN3 on CPU as of Oct 2026.
-- **Virtual mic:** VB-Cable, set up by our installer: downloaded from vb-audio.com at install
-  time (its license doesn't allow bundling) and installed silently. Apps pick "CABLE Output" as
-  their mic. Rejected: our own attestation-signed driver (EV cert, kernel code), an APO on the real
+- **Virtual mic:** VB-Cable. Its license (readme in the driver pack) forbids integrating it "in
+  another software installation procedure without Author agreement", so we do NOT download or run
+  its setup ourselves. The installer checks for it (`BetterMic.exe --check-cable`) and, if missing,
+  guides the user to vb-audio.com and re-checks; the tray app also starts on its own once the
+  device appears. If VB-Audio ever grants permission: `VBCABLE_Setup_x64.exe -i -h`, elevated,
+  then reboot. Apps pick "CABLE Output" as their mic. Rejected: our own attestation-signed driver (EV cert, kernel code), an APO on the real
   mic (needs `DisableProtectedAudioDG`, fragile), test signing (anti-cheat), and
   VirtualDrivers/Virtual-Audio-Driver (beta, test-signed only).
 - **Discord:** users should turn off Discord's own noise suppression (Krisp), echo cancellation
@@ -73,7 +76,9 @@ Gotchas:
 - Fresh checkout: `git clone --recurse-submodules`, then `scripts\build.cmd`.
 
 ## Environment
-- Windows 11 24H2 gaming/streaming PC
+- Windows 11 24H2 gaming/streaming PC. VB-Cable 4.5 is installed (render endpoints
+  "Speakers (VB-Audio Virtual Cable)" and "CABLE In 16 Ch", capture "CABLE Output").
+  NVIDIA Broadcast is installed too (its own virtual mic/speakers).
 - Headset: SteelSeries Arctis Nova 3X Wireless (USB dongle). Falls back to speakers when the headset is off.
 - Related project: `usb-headset-tray` (handles auto-switching output with HeadsetControl).
 
@@ -90,8 +95,8 @@ Speaker loopback (WASAPI loopback) ──────┘
   output is the speakers. Saves CPU and avoids AEC degrading speech unnecessarily.
 
 ## Next steps
-3. C# tray app: WASAPI mic capture + loopback capture, 10 ms framing, resampling to 48 kHz if
-   needed, output to "CABLE Input". Device pickers and per-feature toggles in the tray menu.
+3. C# tray app (`app/`, in progress): WASAPI mic + loopback capture, 10 ms framing, output to
+   VB-Cable, tray menu. AEC Auto mode uses the output's form factor (off for headphones/headset).
+   `dotnet test better-mic.sln` runs the xunit tests (needs `build\micproc.dll`).
 4. Evaluate on real recordings (keyboard, fans, game audio on speakers); tune NS level defaults.
-5. Inno Setup installer: app + micproc.dll, VB-Cable download and silent install (needs admin).
-6. Later: AEC auto-enable based on output device.
+5. Inno Setup installer: app + micproc.dll, guided VB-Cable check (see Decisions); release workflow.

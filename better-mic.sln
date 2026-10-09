@@ -1,0 +1,36 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BetterMic", "app\BetterMic.csproj", "{4A6F9729-B1FF-4BE4-950E-CA5F929CD0BD}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "app", "app", "{CBBC4F0E-338F-42D6-8930-E749818C286F}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{CC9D95DD-F30B-4547-84C7-79669E02078E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BetterMic.Tests", "app\tests\BetterMic.Tests\BetterMic.Tests.csproj", "{E1C94102-2666-4F9C-9651-625FE7ACB504}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4A6F9729-B1FF-4BE4-950E-CA5F929CD0BD}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{4A6F9729-B1FF-4BE4-950E-CA5F929CD0BD}.Debug|Any CPU.Build.0 = Debug|x64
+		{4A6F9729-B1FF-4BE4-950E-CA5F929CD0BD}.Release|Any CPU.ActiveCfg = Release|x64
+		{4A6F9729-B1FF-4BE4-950E-CA5F929CD0BD}.Release|Any CPU.Build.0 = Release|x64
+		{E1C94102-2666-4F9C-9651-625FE7ACB504}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{E1C94102-2666-4F9C-9651-625FE7ACB504}.Debug|Any CPU.Build.0 = Debug|x64
+		{E1C94102-2666-4F9C-9651-625FE7ACB504}.Release|Any CPU.ActiveCfg = Release|x64
+		{E1C94102-2666-4F9C-9651-625FE7ACB504}.Release|Any CPU.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{CC9D95DD-F30B-4547-84C7-79669E02078E} = {CBBC4F0E-338F-42D6-8930-E749818C286F}
+		{E1C94102-2666-4F9C-9651-625FE7ACB504} = {CC9D95DD-F30B-4547-84C7-79669E02078E}
+	EndGlobalSection
+EndGlobal
