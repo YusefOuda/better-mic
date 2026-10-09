@@ -56,6 +56,8 @@ sealed class AudioEngine : IDisposable
 
     public MicProcStats? Stats => _processor?.GetStats();
 
+    public PipelineSnapshot? Counters => _mic?.Counters.Snapshot();
+
     public void Stop()
     {
         SetLoopback(null);

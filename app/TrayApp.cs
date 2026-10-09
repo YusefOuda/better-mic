@@ -86,18 +86,10 @@ class TrayApp : ApplicationContext
     // Brings the engine in line with the current devices and settings. Safe to call any time.
     void Reconcile()
     {
-        var captures = _devices.Active(DataFlow.Capture);
-        var renders = _devices.Active(DataFlow.Render);
-        string? cableId = DevicePolicy.PickCableInput(renders);
-        string? micId = DevicePolicy.PickMic(_settings.MicDeviceId, captures,
-            _devices.DefaultId(DataFlow.Capture, Role.Console),
-            _devices.DefaultId(DataFlow.Capture, Role.Communications));
-        _micName = captures.FirstOrDefault(d => d.Id == micId)?.Name;
-
-        string? outputId = _devices.DefaultId(DataFlow.Render, Role.Console);
-        if (outputId == cableId) outputId = null; // nothing audible to cancel
-        _outputFormFactor = outputId != null ? _devices.GetFormFactor(outputId) : null;
-        bool aec = outputId != null && DevicePolicy.IsAecEnabled(_settings.EchoCancellation, _outputFormFactor);
+        var selection = DeviceSelection.Resolve(_devices, _settings);
+        var (micId, cableId, outputId, aec) = (selection.MicId, selection.CableId, selection.OutputId, selection.AecEnabled);
+        _micName = selection.MicName;
+        _outputFormFactor = selection.OutputFormFactor;
 
         if (cableId == null)
         {
@@ -197,7 +189,7 @@ class TrayApp : ApplicationContext
         if (_micName != null && _problem == null)
             menu.Items.Add(new ToolStripMenuItem($"Mic: {_micName}") { Enabled = false });
         if (_cableId == null && _problem != null)
-            menu.Items.Add("Download VB-Cable…", null, (_, _) => OpenUrl(VbCableUrl));
+            menu.Items.Add("Download VB-Cableâ€¦", null, (_, _) => OpenUrl(VbCableUrl));
         if (_availableUpdate != null)
             menu.Items.Add($"Update available ({_availableUpdate})", null, (_, _) => OpenUrl(UpdateChecker.ReleasesPage));
         menu.Items.Add(new ToolStripSeparator());

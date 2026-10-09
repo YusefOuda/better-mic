@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using NAudio.CoreAudioApi;
 using BetterMic.Native;
 
@@ -12,6 +13,8 @@ sealed class MicPipeline : AudioThread
     readonly string _cableId;
     readonly MicProcessor _processor;
     readonly Func<bool> _processingEnabled;
+
+    public PipelineCounters Counters { get; } = new();
 
     public MicPipeline(string micId, string cableId, MicProcessor processor, Func<bool> processingEnabled,
         Action<Exception> onError) : base("Mic pipeline", onError)
@@ -38,8 +41,11 @@ sealed class MicPipeline : AudioThread
         var mono = new float[client.BufferSize];
         FrameAccumulator.FrameHandler onFrame = frame =>
         {
+            long start = Stopwatch.GetTimestamp();
             if (_processingEnabled()) _processor.ProcessCapture(frame);
+            long elapsed = Stopwatch.GetTimestamp() - start;
             sink.Write(frame);
+            Counters.RecordFrame(elapsed, sink.Underruns, sink.Drops);
         };
         WaitHandle[] waits = [Stop, packetReady];
 
