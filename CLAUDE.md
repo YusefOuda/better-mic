@@ -27,7 +27,10 @@ Gotchas:
 - AEC stats look off on synthetic input (ERLE ~0.2 dB, delay 16 ms vs real 40 ms) although
   cancellation works (~20 dB). Recheck with real audio before showing them in a UI.
 - Measured cost: ~0.34 ms per 10 ms frame for AEC + RNNoise + AGC (3.4% of one core).
+- Keep the checkout path short (well under ~100 chars): some WebRTC object paths in `build\` are
+  ~150 chars, and MSVC fails past MAX_PATH (260) with "Cannot open compiler generated file".
 - Tooling: Python 3.12 (user install) + `pip install --user meson ninja`.
+- Fresh checkout: `git clone --recurse-submodules`, then `scripts\build.cmd`.
 
 ## Goal
 A Windows app that cleans up the microphone signal in real time, as a lightweight
