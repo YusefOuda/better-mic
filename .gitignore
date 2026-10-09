@@ -1,3 +1,7 @@
 build/
 third_party/rnnoise-model/
 .vs/
+# Meson-managed
+.wraplock
+subprojects/packagecache/
+subprojects/abseil-cpp-*/
