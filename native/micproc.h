@@ -56,7 +56,7 @@ typedef enum micproc_ns_mode {
   MICPROC_NS_OFF = 0,
   MICPROC_NS_WEBRTC = 1,  /* WebRTC APM noise suppression, see ns_level */
   MICPROC_NS_RNNOISE = 2, /* RNNoise: light, good on steady noise (fans, hum) */
-  MICPROC_NS_DEEPFILTER = 3, /* DeepFilterNet3: best quality, incl. keyboards and voices */
+  MICPROC_NS_DEEPFILTER = 3, /* DeepFilterNet3: strongest, incl. keyboards and voices */
 } micproc_ns_mode;
 
 /* Field order and sizes are part of the ABI: all int32_t, no padding. */
@@ -79,7 +79,7 @@ typedef struct micproc micproc;
 
 MICPROC_API int32_t MICPROC_CALL micproc_api_version(void);
 
-/* Fills *config with defaults: AEC on, DeepFilterNet at level 3, AGC on, HPF on. */
+/* Fills *config with defaults: AEC on, RNNoise, AGC on, HPF on (ns_level 3 if switched). */
 MICPROC_API void MICPROC_CALL micproc_default_config(micproc_config* config);
 
 /* Returns NULL on failure. config may be NULL for defaults. */

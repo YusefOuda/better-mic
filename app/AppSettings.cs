@@ -8,7 +8,7 @@ class AppSettings
 {
     // Off = mic passes through to VB-Cable unprocessed (Discord keeps working)
     public bool ProcessingEnabled { get; set; } = true;
-    public NoiseMode NoiseMode { get; set; } = NoiseMode.DeepFilter;
+    public NoiseMode NoiseMode { get; set; } = NoiseMode.RNNoise;
     // 0 low .. 3 max; used by DeepFilter and WebRTC NS
     public int NoiseLevel { get; set; } = 3;
     public AecMode EchoCancellation { get; set; } = AecMode.Auto;
@@ -60,7 +60,7 @@ class AppSettings
     AppSettings Sanitized()
     {
         NoiseLevel = Math.Clamp(NoiseLevel, 0, 3);
-        if (!Enum.IsDefined(NoiseMode)) NoiseMode = NoiseMode.DeepFilter;
+        if (!Enum.IsDefined(NoiseMode)) NoiseMode = NoiseMode.RNNoise;
         if (!Enum.IsDefined(EchoCancellation)) EchoCancellation = AecMode.Auto;
         return this;
     }

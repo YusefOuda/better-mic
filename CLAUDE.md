@@ -19,9 +19,11 @@ Distribution: all-in-one, with an Inno Setup installer like the user's other tra
 ## Decisions
 - **Language:** C# (.NET 8 WinForms tray app) for the app; native DSP in `micproc.dll` via P/Invoke.
 - **Separate app**, not merged into usb-headset-tray and not a VST plugin.
-- **Noise suppressor:** DeepFilterNet3 is the default (best open-source option for keyboards and
-  background voices; ~40 ms added latency is fine for Discord). RNNoise stays available as a
-  lighter option; WebRTC NS too. Nothing open clearly beat DFN3 on CPU as of Oct 2026.
+- **Noise suppressor:** RNNoise is the default: in the user's own listening test (Oct 2026, real
+  mic, Arctis headset) it sounded best. DeepFilterNet3 stays available as the stronger option for
+  keyboards and background voices (on paper the best open model on CPU; ~40 ms added latency).
+  It was tested at Maximum strength (unlimited attenuation, gates to silence between words), so
+  Medium/High may compare better; worth re-testing. WebRTC NS also available.
 - **Virtual mic:** VB-Cable. Its license (readme in the driver pack) forbids integrating it "in
   another software installation procedure without Author agreement", so we do NOT download or run
   its setup ourselves. The installer checks for it (`BetterMic.exe --check-cable`) and, if missing,

@@ -13,10 +13,10 @@ public class AppSettingsTests : IDisposable
     }
 
     [Fact]
-    public void DefaultsToBestQuality()
+    public void DefaultsToRNNoise()
     {
         var s = new AppSettings();
-        Assert.Equal(NoiseMode.DeepFilter, s.NoiseMode);
+        Assert.Equal(NoiseMode.RNNoise, s.NoiseMode);
         Assert.Equal(3, s.NoiseLevel);
         Assert.Equal(AecMode.Auto, s.EchoCancellation);
         Assert.True(s.ProcessingEnabled);
@@ -42,7 +42,7 @@ public class AppSettingsTests : IDisposable
         File.WriteAllText(SettingsFile, """{ "NoiseLevel": 9, "NoiseMode": 42 }""");
         var loaded = AppSettings.LoadFrom(SettingsFile);
         Assert.Equal(3, loaded.NoiseLevel);
-        Assert.Equal(NoiseMode.DeepFilter, loaded.NoiseMode);
+        Assert.Equal(NoiseMode.RNNoise, loaded.NoiseMode);
     }
 
     [Fact]
@@ -50,7 +50,7 @@ public class AppSettingsTests : IDisposable
     {
         Directory.CreateDirectory(_dir);
         File.WriteAllText(SettingsFile, "{ not json");
-        Assert.Equal(NoiseMode.DeepFilter, AppSettings.LoadFrom(SettingsFile).NoiseMode);
+        Assert.Equal(NoiseMode.RNNoise, AppSettings.LoadFrom(SettingsFile).NoiseMode);
     }
 
     [Fact]

@@ -110,7 +110,7 @@ int32_t micproc_api_version(void) { return MICPROC_API_VERSION; }
 void micproc_default_config(micproc_config* config) {
   if (!config) return;
   config->aec_enabled = 1;
-  config->ns_mode = MICPROC_NS_DEEPFILTER;
+  config->ns_mode = MICPROC_NS_RNNOISE;
   config->ns_level = 3;
   config->agc_enabled = 1;
   config->hpf_enabled = 1;

@@ -224,7 +224,7 @@ class TrayApp : ApplicationContext
     ToolStripMenuItem NoiseMenu()
     {
         var root = new ToolStripMenuItem("Noise removal");
-        foreach (var mode in new[] { NoiseMode.DeepFilter, NoiseMode.RNNoise, NoiseMode.WebRtc, NoiseMode.Off })
+        foreach (var mode in new[] { NoiseMode.RNNoise, NoiseMode.DeepFilter, NoiseMode.WebRtc, NoiseMode.Off })
         {
             var item = new ToolStripMenuItem(NoiseName(mode, detailed: true)) { Checked = _settings.NoiseMode == mode };
             item.Click += (_, _) =>
@@ -330,8 +330,8 @@ class TrayApp : ApplicationContext
 
     static string NoiseName(NoiseMode mode, bool detailed = false) => mode switch
     {
-        NoiseMode.DeepFilter => detailed ? "DeepFilterNet (best)" : "DeepFilterNet",
-        NoiseMode.RNNoise => detailed ? "RNNoise (lighter, steady noise only)" : "RNNoise",
+        NoiseMode.DeepFilter => detailed ? "DeepFilterNet (strongest, for keyboards and voices)" : "DeepFilterNet",
+        NoiseMode.RNNoise => detailed ? "RNNoise (recommended)" : "RNNoise",
         NoiseMode.WebRtc => detailed ? "WebRTC (basic)" : "WebRTC noise suppression",
         _ => detailed ? "Off" : "no noise removal",
     };

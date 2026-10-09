@@ -59,7 +59,7 @@ static void test_api(void) {
 
   micproc_config c;
   micproc_default_config(&c);
-  CHECK(c.aec_enabled && c.ns_mode == MICPROC_NS_DEEPFILTER && c.ns_level == 3 && c.agc_enabled &&
+  CHECK(c.aec_enabled && c.ns_mode == MICPROC_NS_RNNOISE && c.ns_level == 3 && c.agc_enabled &&
             c.hpf_enabled,
         "default config");
 
