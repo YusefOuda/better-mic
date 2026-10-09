@@ -36,25 +36,11 @@ Distribution: all-in-one, with an Inno Setup installer like the user's other tra
 - **Discord:** users should turn off Discord's own noise suppression (Krisp), echo cancellation
   and AGC when using our mic; double processing sounds worse. Say so in the app and README.
 
-## Status / build
-Steps 1 and 2 done, plus DeepFilterNet. `scripts\build.cmd` (MSVC x64 Release) fetches the
-RNNoise model, builds everything with Meson (cargo for the Rust part) and runs the tests.
-Output: `build\micproc.dll` (~41 MB, mostly embedded model weights).
-
-Layout:
-- `native/micproc.h` / `micproc.cc`: the C API (P/Invoke target). 48 kHz float, 480-sample frames,
-  mono capture, 1..8 ch interleaved render. Two APM instances: pre (HPF, AEC3, WebRTC NS) and
-  post (AGC2), with RNNoise/DeepFilterNet between them. `ns_level` 0..3 sets strength for WebRTC
-  NS and DeepFilterNet (mapped to attenuation limits 12/18/30/unlimited dB).
-- `native/dfshim/`: Rust staticlib over DeepFilterNet's `libDF` (model embedded, panics caught,
-  static CRT). Built by `scripts/cargo_build.py` from a Meson custom_target. `Cargo.lock` was
-  seeded from DeepFilterNet's own lockfile (known-good versions); build uses `--locked`.
-- `subprojects/webrtc-audio-processing`: submodule, v2.1 (Meson subproject; pulls abseil via wrap).
-- `third_party/rnnoise`: submodule, master @ 70f1d25 (newer model than v0.2), compiled directly
-  from `meson.build`. Model weights (`rnnoise_data.c`, ~78 MB source) are downloaded and
-  SHA-256 checked by `scripts\fetch-rnnoise-model.ps1` into `third_party/rnnoise-model` (gitignored).
-- `third_party/DeepFilterNet`: submodule, master @ d375b2d (Oct 2024; project is quiet but current).
-- `tests/apm_smoke.cc` (raw APM) and `tests/micproc_test.c` (DLL API, AEC, NS modes, cost).
+## Build notes
+- `native/dfshim/Cargo.lock` was seeded from DeepFilterNet's own lockfile (known-good versions);
+  the build uses `--locked`.
+- RNNoise is pinned to master @ 70f1d25, not v0.2: newer model, and v0.2's `model_version` is a
+  short hash that can't be checksum-verified.
 
 Gotchas:
 - Everything is **C++20**: upstream APM uses designated initializers MSVC rejects in C++17, and
@@ -94,21 +80,17 @@ Speaker loopback (WASAPI loopback) ──────┘
 - Order matters: echo → noise → gain. (Gain before noise removal amplifies the noise.)
 - AEC3 needs the render reference (what the speakers are playing) via WASAPI loopback on the
   default render device. It estimates the delay itself; still set a sensible stream delay hint.
-- With the headset on, echo is basically a non-issue. Idea: enable AEC only when the default
-  output is the speakers. Saves CPU and avoids AEC degrading speech unnecessarily.
 
-## Next steps
-3. Done: C# tray app (`app/`): WASAPI mic + loopback capture, 10 ms framing, output to VB-Cable,
-   tray menu. AEC Auto uses the output's form factor (off for headphones/headset).
-   `dotnet test better-mic.sln` runs the xunit tests (needs `build\micproc.dll`). Use
-   `--artifacts-path <dir>` when the user's dev instance is running from `app\bin\x64\Debug`
-   (it locks the exe). `BetterMic.exe --selftest N > out.txt` checks the real pipeline headless.
-4. Evaluate on real recordings (keyboard, fans, game audio on speakers); tune NS level defaults.
-5. Done (untested on GitHub until the first tag): `installer.iss` (per-user, guided VB-Cable page
-   using `--check-cable` exit codes 0 ready / 1 missing / 2 playback endpoint disabled),
-   `.github/workflows/release.yml` (builds native + app, zip + installer on `v*` tags),
-   `README.md`, `THIRD_PARTY_NOTICES.md` (regenerate with `scripts/gen_notices.py`).
-   Local installer build: publish to `publish\`, then
-   `"%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" /DAppVersion=x.y.z installer.iss`.
-   Self-contained single-file publish: exe ~72 MB + micproc.dll 41 MB; installer ~92 MB.
-6. License: MIT (LICENSE). v0.1.0 tagged as the first release.
+## Next steps / working notes
+- Open: evaluate on real recordings (keyboard, fans, game audio on speakers); tune NS defaults.
+- The user's dev instance often runs from `app\bin\x64\Debug` and locks the exe: build and test
+  with `--artifacts-path <scratch dir>` then, and ask before rebuilding into `app\bin`.
+- Local installer build: publish to `publish\`, then
+  `"%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" /DAppVersion=x.y.z installer.iss`.
+- AGC stays WebRTC's default (peaks ~-5 dBFS, boost only). Tried and dropped (user's call):
+  Quiet/Normal/Loud AGC levels (felt alike with a hot mic, since AGC2 only boosts) and a fixed
+  -15 dB pre-attenuation to make AGC two-way (it pushed normal speech below AGC2's level-dependent
+  VAD, so AGC stopped adapting). If revisited: an adaptive downward-only leveler before AGC2 that
+  engages only for hot mics.
+- Ideas not done: headset-off fallback mic (Arctis dongle stays enumerated when headset is off),
+  one-click updates, voice EQ/compressor presets, smarter AEC Auto via HeadsetControl.

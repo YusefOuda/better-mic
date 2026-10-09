@@ -16,10 +16,14 @@ It only processes **your own mic**. No camera effects and no processing of incom
 - **Echo cancellation** (WebRTC AEC3) removes game and voice-chat audio that your mic picks up from
   your speakers. **Auto** mode turns it on only when you're using speakers, not headphones or a headset
 - **Automatic gain control** (WebRTC AGC2) evens out your volume, with a limiter
+- **Mute**: left-click the tray icon to mute everywhere at once (Discord, games, OBS); the icon turns red
+- **Test microphone** window: live meters for your raw and processed mic, and a 5-second recording
+  you can play back both ways to hear the difference
+- **Clipping warning** when your mic is so loud before processing that it distorts
 - Picks your real mic automatically and never loops back its own output or another app's virtual mic
 - Follows device changes (headset on/off, default device switches) and restarts by itself after errors
 - Bypass toggle: sends your mic through unprocessed without changing any app settings
-- Light: about 0.3 ms of CPU per 10 ms of audio on a desktop CPU
+- Light: under 1% of one CPU core with RNNoise (shown in the menu, with dropout count)
 - Daily update check against GitHub Releases (can be turned off)
 - Start with Windows
 - Settings saved in `%APPDATA%\better-mic\settings.json`
@@ -83,24 +87,38 @@ output. The extra **CABLE In 16 Ch** device isn't needed and can be disabled.
 
 ## Usage
 
-Right-click the tray icon:
+**Left-click** the tray icon to mute or unmute. Muting sends silence to CABLE Output while
+processing keeps running, so unmuting is instant. Mute isn't remembered across restarts.
 
-- **Status** (top line): Active, Bypassed, or what's wrong (for example "VB-Cable is not installed")
+**Right-click** for the menu:
+
+- **Status** (top line): Active, Muted, Bypassed, or what's wrong (for example "VB-Cable is not installed")
 - **Mic**: the microphone being processed
+- **Load**: CPU used by processing (share of one core) and dropouts since the mic started
+- **Mute**: same as left-clicking the icon
 - **Process mic**: uncheck to bypass. Your mic still reaches CABLE Output, unprocessed
 - **Noise removal**: engine (RNNoise / DeepFilterNet / WebRTC / Off) and **Strength**
 - **Echo cancellation**: **Auto** (on for speakers, off for headphones/headsets, based on what
   Windows reports for your default output), **Always on**, or **Off**
-- **Automatic gain**
+- **Automatic gain**: raises your voice until its peaks reach about -5 dBFS. It only boosts (a mic
+  that's already loud is left alone), adapts while you speak (at most 6 dB per second), and never
+  raises background noise above -50 dBFS
 - **Microphone**: **Automatic** (your Windows default mic, skipping VB-Cable and other virtual mics)
   or a specific device
+- **Test microphone…**: meters and a before/after recording (playback uses your default output)
 - **Discord setup…**: the setup steps above
 - **Settings**: Start with Windows, Check for updates
 
-The tray icon is green while processing, grey with a slash when bypassed, and red when something
-needs attention.
+The tray icon is green while processing, red with a slash when muted, grey when bypassed, and
+amber when something needs attention.
 
 ## Troubleshooting
+
+- **"Your mic is clipping"**: your mic level in Windows is so high that loud sounds distort before
+  Better Mic gets them, and nothing afterwards can undo that. Click the notification (or open Sound
+  settings → More sound settings → Recording → your mic → Properties → Levels) and lower the level
+  until **CLIPPING** no longer shows in **Test microphone** when you shout. Automatic gain makes up
+  the difference.
 
 - **"VB-Cable is not installed"**: install it (see Installation). If you just installed it, restart Windows.
 - **"VB-Cable's playback device is disabled"**: enable **Speakers (VB-Audio Virtual Cable)** under

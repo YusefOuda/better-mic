@@ -13,6 +13,7 @@ sealed class AudioEngine : IDisposable
     MicPipeline? _mic;
     LoopbackFeeder? _loopback;
     volatile bool _processingEnabled = true;
+    volatile bool _muted;
 
     public event Action<string>? Faulted;
 
@@ -23,6 +24,13 @@ sealed class AudioEngine : IDisposable
     {
         get => _processingEnabled;
         set => _processingEnabled = value;
+    }
+
+    // Sends silence to VB-Cable while true
+    public bool Muted
+    {
+        get => _muted;
+        set => _muted = value;
     }
 
     // Starts (or restarts) mic -> VB-Cable. Throws if the native library can't be loaded.
@@ -38,7 +46,7 @@ sealed class AudioEngine : IDisposable
         {
             _processor.SetConfig(config);
         }
-        _mic = new MicPipeline(micId, cableId, _processor, () => _processingEnabled,
+        _mic = new MicPipeline(micId, cableId, _processor, () => _processingEnabled, () => _muted,
             e => Faulted?.Invoke($"Microphone stream stopped: {e.Message}"));
     }
 
@@ -57,6 +65,18 @@ sealed class AudioEngine : IDisposable
     public MicProcStats? Stats => _processor?.GetStats();
 
     public PipelineSnapshot? Counters => _mic?.Counters.Snapshot();
+
+    // Peak levels since the last call; null while stopped
+    public (float Raw, float Output)? TakePeaks() => _mic?.Counters.TakePeaks();
+
+    // Starts recording `seconds` of raw + processed mic; null if the engine isn't running
+    public MicRecorder? StartRecording(double seconds)
+    {
+        if (_mic == null) return null;
+        var recorder = new MicRecorder((int)(seconds * MicProcNative.SampleRate));
+        _mic.Recorder = recorder;
+        return recorder;
+    }
 
     public void Stop()
     {

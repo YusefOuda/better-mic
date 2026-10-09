@@ -22,6 +22,9 @@ class TrayApp : ApplicationContext
     // Device events arrive in bursts (e.g. headset power-on); reconcile once they settle
     readonly System.Windows.Forms.Timer _reconcileTimer = new();
     readonly System.Windows.Forms.Timer _updateTimer = new();
+    readonly System.Windows.Forms.Timer _clipTimer = new() { Interval = 1000 };
+    readonly ClipWarner _clipWarner = new();
+    MicTestForm? _testForm;
 
     // What the engine is currently running with
     string? _micId;
@@ -34,6 +37,8 @@ class TrayApp : ApplicationContext
     string? _problem;
     CableState _cableState = CableState.Ready;
     CableState? _notifiedCableState;
+    // Not saved: starting muted after a restart would be easy to miss
+    bool _muted;
     string? _availableUpdate;
     Action? _balloonClick;
 
@@ -43,8 +48,17 @@ class TrayApp : ApplicationContext
         _engine.ProcessingEnabled = _settings.ProcessingEnabled;
 
         _tray = new NotifyIcon { Visible = true, ContextMenuStrip = new ContextMenuStrip() };
-        _tray.ContextMenuStrip.Opening += (_, _) => BuildMenu();
+        _tray.ContextMenuStrip.Opening += (_, e) =>
+        {
+            BuildMenu();
+            // WinForms pre-cancels Opening when the strip is empty, which it is on the first right-click
+            e.Cancel = false;
+        };
         _tray.BalloonTipClicked += (_, _) => _balloonClick?.Invoke();
+        _tray.MouseClick += (_, e) =>
+        {
+            if (e.Button == MouseButtons.Left) ToggleMute();
+        };
 
         var ui = SynchronizationContext.Current!;
         _engine.Faulted += message => ui.Post(_ => OnFault(message), null);
@@ -64,6 +78,9 @@ class TrayApp : ApplicationContext
             if (_settings.CheckForUpdates) await CheckForUpdate();
         };
         _updateTimer.Start();
+
+        _clipTimer.Tick += (_, _) => CheckClipping();
+        _clipTimer.Start();
 
         Reconcile();
         if (!_settings.SetupShown && _cableId != null)
@@ -170,17 +187,45 @@ class TrayApp : ApplicationContext
         ScheduleReconcile(RetryDelay);
     }
 
+    void ToggleMute()
+    {
+        _muted = !_muted;
+        _engine.Muted = _muted;
+        UpdateTray();
+    }
+
+    void CheckClipping()
+    {
+        if (_engine.Counters is not { } counters || _muted) return;
+        if (!_clipWarner.Update(counters.ClippedFrames, DateTime.UtcNow)) return;
+        ShowBalloon(AppName, "Your mic is clipping (too loud before processing, which no setting can repair). " +
+            "Click to open Recording devices and lower your mic's level.", ToolTipIcon.Warning, OpenRecordingSettings);
+    }
+
+    void ShowTestWindow()
+    {
+        if (_testForm is { IsDisposed: false })
+        {
+            _testForm.Activate();
+            return;
+        }
+        _testForm = new MicTestForm(_engine, () => _problem);
+        _testForm.FormClosed += (_, _) => _testForm = null;
+        _testForm.Show();
+    }
+
     // --- Tray ------------------------------------------------------------------------
 
     void UpdateTray()
     {
         var state = _problem != null ? IconState.Problem
+            : _muted ? IconState.Muted
             : _settings.ProcessingEnabled ? IconState.Active : IconState.Bypassed;
         var old = _tray.Icon;
         _tray.Icon = IconRenderer.Render(state, SystemInformation.SmallIconSize.Width);
         old?.Dispose();
 
-        string text = _problem ?? (_settings.ProcessingEnabled
+        string text = _problem ?? (_muted ? "Muted (click to unmute)" : _settings.ProcessingEnabled
             ? $"{NoiseName(_settings.NoiseMode)}, echo {(_aecActive ? "on" : "off")}"
             : "Bypassed (unprocessed mic)");
         // NotifyIcon.Text is limited to 127 characters
@@ -193,10 +238,13 @@ class TrayApp : ApplicationContext
         var menu = _tray.ContextMenuStrip!;
         menu.Items.Clear();
 
-        string status = _problem ?? (_settings.ProcessingEnabled ? "Active" : "Bypassed");
+        string status = _problem ?? (_muted ? "Muted" : _settings.ProcessingEnabled ? "Active" : "Bypassed");
         menu.Items.Add(new ToolStripMenuItem($"{AppName}: {status}") { Enabled = false });
         if (_micName != null && _problem == null)
             menu.Items.Add(new ToolStripMenuItem($"Mic: {_micName}") { Enabled = false });
+        if (_problem == null && _engine.Counters is { Frames: > 0 } counters)
+            menu.Items.Add(new ToolStripMenuItem(
+                $"Load: {counters.CpuPercent:F1}% of a CPU core · dropouts: {counters.Dropouts}") { Enabled = false });
         if (_cableState == CableState.Missing)
             menu.Items.Add("Download VB-Cable…", null, (_, _) => OpenUrl(VbCableUrl));
         else if (_cableState == CableState.Disabled)
@@ -204,6 +252,10 @@ class TrayApp : ApplicationContext
         if (_availableUpdate != null)
             menu.Items.Add($"Update available ({_availableUpdate})", null, (_, _) => OpenUrl(UpdateChecker.ReleasesPage));
         menu.Items.Add(new ToolStripSeparator());
+
+        var mute = new ToolStripMenuItem("Mute (left-click the icon)") { Checked = _muted };
+        mute.Click += (_, _) => ToggleMute();
+        menu.Items.Add(mute);
 
         var enabled = new ToolStripMenuItem("Process mic") { Checked = _settings.ProcessingEnabled };
         enabled.Click += (_, _) =>
@@ -227,6 +279,7 @@ class TrayApp : ApplicationContext
         menu.Items.Add(MicMenu());
 
         menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("Test microphone…", null, (_, _) => ShowTestWindow());
         menu.Items.Add("Discord setup…", null, (_, _) => ShowSetupHelp());
         menu.Items.Add(SettingsMenu());
         menu.Items.Add("Exit", null, (_, _) => ExitThread());
@@ -379,6 +432,9 @@ class TrayApp : ApplicationContext
     // Classic Sound control panel, Playback tab (lists disabled devices via right-click)
     static void OpenSoundSettings() => Process.Start(new ProcessStartInfo("control.exe", "mmsys.cpl,,0") { UseShellExecute = true });
 
+    // Recording tab: mic Properties > Levels
+    static void OpenRecordingSettings() => Process.Start(new ProcessStartInfo("control.exe", "mmsys.cpl,,1") { UseShellExecute = true });
+
     static void ApplyStartWithWindows(bool enable)
     {
         using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", writable: true);
@@ -393,6 +449,8 @@ class TrayApp : ApplicationContext
     {
         _reconcileTimer.Stop();
         _updateTimer.Stop();
+        _clipTimer.Stop();
+        _testForm?.Close();
         _engine.Dispose();
         _devices.Dispose();
         _tray.Visible = false;

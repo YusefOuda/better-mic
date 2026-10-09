@@ -13,16 +13,22 @@ sealed class MicPipeline : AudioThread
     readonly string _cableId;
     readonly MicProcessor _processor;
     readonly Func<bool> _processingEnabled;
+    readonly Func<bool> _muted;
+    readonly float[] _rawCopy = new float[MicProcNative.FrameSize];
 
     public PipelineCounters Counters { get; } = new();
 
+    // Set by the UI to capture the next few seconds; the mic thread fills it
+    public volatile MicRecorder? Recorder;
+
     public MicPipeline(string micId, string cableId, MicProcessor processor, Func<bool> processingEnabled,
-        Action<Exception> onError) : base("Mic pipeline", onError)
+        Func<bool> muted, Action<Exception> onError) : base("Mic pipeline", onError)
     {
         _micId = micId;
         _cableId = cableId;
         _processor = processor;
         _processingEnabled = processingEnabled;
+        _muted = muted;
         StartThread();
     }
 
@@ -41,11 +47,21 @@ sealed class MicPipeline : AudioThread
         var mono = new float[client.BufferSize];
         FrameAccumulator.FrameHandler onFrame = frame =>
         {
+            float rawPeak = AudioLevels.Peak(frame);
+            bool clipped = AudioLevels.IsClipped(frame);
+            var recorder = Recorder;
+            if (recorder != null) frame.CopyTo(_rawCopy, 0);
+
             long start = Stopwatch.GetTimestamp();
             if (_processingEnabled()) _processor.ProcessCapture(frame);
             long elapsed = Stopwatch.GetTimestamp() - start;
+
+            float outputPeak = AudioLevels.Peak(frame);
+            recorder?.Write(_rawCopy, frame);
+            // Muting keeps processing running (AEC/NS/AGC state stays warm) and sends silence
+            if (_muted()) Array.Clear(frame);
             sink.Write(frame);
-            Counters.RecordFrame(elapsed, sink.Underruns, sink.Drops);
+            Counters.RecordFrame(elapsed, sink.Underruns, sink.Drops, rawPeak, outputPeak, clipped);
         };
         WaitHandle[] waits = [Stop, packetReady];
 
