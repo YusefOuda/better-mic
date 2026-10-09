@@ -32,7 +32,8 @@ class TrayApp : ApplicationContext
     string? _micName;
     // Why the engine isn't running, or the last audio fault; null when healthy
     string? _problem;
-    bool _cableMissingNotified;
+    CableState _cableState = CableState.Ready;
+    CableState? _notifiedCableState;
     string? _availableUpdate;
     Action? _balloonClick;
 
@@ -93,17 +94,25 @@ class TrayApp : ApplicationContext
 
         if (cableId == null)
         {
-            // Starts automatically once VB-Cable is installed (device-added notification)
-            StopEngine("VB-Cable is not installed");
-            if (!_cableMissingNotified)
+            // Starts automatically once VB-Cable is installed or enabled (device notifications)
+            _cableState = _devices.GetCableState();
+            bool disabled = _cableState == CableState.Disabled;
+            StopEngine(disabled ? "VB-Cable's playback device is disabled" : "VB-Cable is not installed");
+            if (_notifiedCableState != _cableState)
             {
-                _cableMissingNotified = true;
-                ShowBalloon(AppName, "Better Mic needs VB-Cable, a free virtual audio driver. Click to download it from vb-audio.com.",
-                    ToolTipIcon.Warning, () => OpenUrl(VbCableUrl));
+                _notifiedCableState = _cableState;
+                if (disabled)
+                    ShowBalloon(AppName, "Enable \"Speakers (VB-Audio Virtual Cable)\" (CABLE Input) under Playback devices. Click to open Sound settings.",
+                        ToolTipIcon.Warning, OpenSoundSettings);
+                else
+                    ShowBalloon(AppName, "Better Mic needs VB-Cable, a free virtual audio driver. Click to download it from vb-audio.com.",
+                        ToolTipIcon.Warning, () => OpenUrl(VbCableUrl));
             }
             UpdateTray();
             return;
         }
+        _cableState = CableState.Ready;
+        _notifiedCableState = null;
         if (micId == null)
         {
             StopEngine("No microphone found");
@@ -188,8 +197,10 @@ class TrayApp : ApplicationContext
         menu.Items.Add(new ToolStripMenuItem($"{AppName}: {status}") { Enabled = false });
         if (_micName != null && _problem == null)
             menu.Items.Add(new ToolStripMenuItem($"Mic: {_micName}") { Enabled = false });
-        if (_cableId == null && _problem != null)
+        if (_cableState == CableState.Missing)
             menu.Items.Add("Download VB-Cable…", null, (_, _) => OpenUrl(VbCableUrl));
+        else if (_cableState == CableState.Disabled)
+            menu.Items.Add("Open Sound settings…", null, (_, _) => OpenSoundSettings());
         if (_availableUpdate != null)
             menu.Items.Add($"Update available ({_availableUpdate})", null, (_, _) => OpenUrl(UpdateChecker.ReleasesPage));
         menu.Items.Add(new ToolStripSeparator());
@@ -364,6 +375,9 @@ class TrayApp : ApplicationContext
     }
 
     static void OpenUrl(string url) => Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+
+    // Classic Sound control panel, Playback tab (lists disabled devices via right-click)
+    static void OpenSoundSettings() => Process.Start(new ProcessStartInfo("control.exe", "mmsys.cpl,,0") { UseShellExecute = true });
 
     static void ApplyStartWithWindows(bool enable)
     {

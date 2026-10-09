@@ -3,6 +3,10 @@ using NAudio.CoreAudioApi.Interfaces;
 
 namespace BetterMic.Audio;
 
+// Ready: VB-Cable's playback side ("CABLE Input") is active. Disabled: VB-Cable is installed but
+// that endpoint is disabled in Sound settings. Missing: not installed.
+enum CableState { Ready, Disabled, Missing }
+
 // Device enumeration and change notifications. Use from the UI thread.
 sealed class Devices : IDisposable
 {
@@ -32,6 +36,25 @@ sealed class Devices : IDisposable
             }
         }
         return list;
+    }
+
+    public CableState GetCableState() => GetCableState(_enumerator);
+
+    public static CableState GetCableState(MMDeviceEnumerator enumerator)
+    {
+        bool Any(DataFlow flow, DeviceState states)
+        {
+            foreach (var d in enumerator.EnumerateAudioEndPoints(flow, states))
+            {
+                using (d)
+                    if (DevicePolicy.IsVirtualCable(d.DeviceFriendlyName)) return true;
+            }
+            return false;
+        }
+
+        if (Any(DataFlow.Render, DeviceState.Active)) return CableState.Ready;
+        if (Any(DataFlow.All, DeviceState.Active | DeviceState.Disabled)) return CableState.Disabled;
+        return CableState.Missing;
     }
 
     public string? DefaultId(DataFlow flow, Role role)

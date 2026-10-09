@@ -98,8 +98,17 @@ Speaker loopback (WASAPI loopback) ──────┘
   output is the speakers. Saves CPU and avoids AEC degrading speech unnecessarily.
 
 ## Next steps
-3. C# tray app (`app/`, in progress): WASAPI mic + loopback capture, 10 ms framing, output to
-   VB-Cable, tray menu. AEC Auto mode uses the output's form factor (off for headphones/headset).
-   `dotnet test better-mic.sln` runs the xunit tests (needs `build\micproc.dll`).
+3. Done: C# tray app (`app/`): WASAPI mic + loopback capture, 10 ms framing, output to VB-Cable,
+   tray menu. AEC Auto uses the output's form factor (off for headphones/headset).
+   `dotnet test better-mic.sln` runs the xunit tests (needs `build\micproc.dll`). Use
+   `--artifacts-path <dir>` when the user's dev instance is running from `app\bin\x64\Debug`
+   (it locks the exe). `BetterMic.exe --selftest N > out.txt` checks the real pipeline headless.
 4. Evaluate on real recordings (keyboard, fans, game audio on speakers); tune NS level defaults.
-5. Inno Setup installer: app + micproc.dll, guided VB-Cable check (see Decisions); release workflow.
+5. Done (untested on GitHub until the first tag): `installer.iss` (per-user, guided VB-Cable page
+   using `--check-cable` exit codes 0 ready / 1 missing / 2 playback endpoint disabled),
+   `.github/workflows/release.yml` (builds native + app, zip + installer on `v*` tags),
+   `README.md`, `THIRD_PARTY_NOTICES.md` (regenerate with `scripts/gen_notices.py`).
+   Local installer build: publish to `publish\`, then
+   `"%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" /DAppVersion=x.y.z installer.iss`.
+   Self-contained single-file publish: exe ~72 MB + micproc.dll 41 MB; installer ~92 MB.
+6. Open: project LICENSE not chosen yet (all dependencies are permissive).

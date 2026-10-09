@@ -27,7 +27,7 @@
   <!-- Native DSP library from scripts\build.cmd; shipped next to the exe (not bundled into it) -->
   <ItemGroup>
     <None Include="..\build\micproc.dll" Link="micproc.dll" CopyToOutputDirectory="PreserveNewest"
-          CopyToPublishDirectory="PreserveNewest" Condition="Exists('..\build\micproc.dll')" />
+          CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" Condition="Exists('..\build\micproc.dll')" />
   </ItemGroup>
 
   <!-- The test project lives under this folder; keep its sources out of the app -->

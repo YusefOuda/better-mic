@@ -1,4 +1,5 @@
 using NAudio.CoreAudioApi;
+using BetterMic.Audio;
 
 namespace BetterMic;
 
@@ -7,8 +8,8 @@ static class Program
     [STAThread]
     static int Main(string[] args)
     {
-        // Used by the installer: exit code 0 if VB-Cable's "CABLE Input" is present, 1 if not
-        if (args.Contains("--check-cable")) return HasVirtualCable() ? 0 : 1;
+        // Used by the installer: exit code 0 = VB-Cable ready, 1 = not installed, 2 = playback side disabled
+        if (args.Contains("--check-cable")) return CheckCable();
         // Diagnostics: runs the real pipeline headless and prints health once a second.
         // WinExe has no console, so redirect stdout: BetterMic.exe --selftest 10 > out.txt
         int selfTest = Array.IndexOf(args, "--selftest");
@@ -27,18 +28,22 @@ static class Program
         return 0;
     }
 
-    static bool HasVirtualCable()
+    static int CheckCable()
     {
         try
         {
             using var enumerator = new MMDeviceEnumerator();
-            foreach (var device in enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active))
+            return Devices.GetCableState(enumerator) switch
             {
-                using (device)
-                    if (DevicePolicy.IsVirtualCable(device.DeviceFriendlyName)) return true;
-            }
+                CableState.Ready => 0,
+                CableState.Disabled => 2,
+                _ => 1,
+            };
         }
-        catch { }
-        return false;
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"check-cable: {e.Message}");
+            return 1;
+        }
     }
 }

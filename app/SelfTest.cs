@@ -14,7 +14,7 @@ static class SelfTest
         var sel = DeviceSelection.Resolve(devices, settings);
 
         Console.WriteLine($"mic:    {sel.MicName ?? "(none)"}");
-        Console.WriteLine($"cable:  {(sel.CableId != null ? "found" : "(missing)")}");
+        Console.WriteLine($"cable:  {(sel.CableId != null ? "found" : devices.GetCableState().ToString())}");
         Console.WriteLine($"output: {sel.OutputName ?? "(none)"} [{sel.OutputFormFactor?.ToString() ?? "?"}]");
         Console.WriteLine($"noise:  {settings.NoiseMode} level {settings.NoiseLevel}, AEC {(sel.AecEnabled ? "on" : "off")} " +
                           $"({settings.EchoCancellation}), AGC {(settings.AutoGain ? "on" : "off")}");

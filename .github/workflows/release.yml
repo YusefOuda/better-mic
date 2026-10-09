@@ -1,0 +1,93 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Meson and Ninja
+        run: pip install meson ninja
+
+      # The runner image ships rustup; make sure the MSVC toolchain is current
+      - name: Setup Rust
+        run: |
+          rustup toolchain install stable --profile minimal --target x86_64-pc-windows-msvc
+          rustup default stable
+
+      # Cargo crates, abseil (Meson wrap) and the ~58 MB RNNoise model are downloaded otherwise
+      - name: Cache downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            subprojects/packagecache
+            subprojects/webrtc-audio-processing/subprojects/packagecache
+            third_party/rnnoise-model
+          key: deps-${{ hashFiles('native/dfshim/Cargo.lock', 'third_party/rnnoise/model_version', 'subprojects/webrtc-audio-processing/subprojects/*.wrap') }}
+
+      # Builds micproc.dll (WebRTC APM + RNNoise + DeepFilterNet) and runs the native tests
+      - name: Build native library
+        shell: cmd
+        run: scripts\build.cmd
+
+      - name: Test app
+        run: dotnet test better-mic.sln
+
+      # Version comes from the tag; the update checker compares it against the latest release.
+      # micproc.dll stays next to the exe (ExcludeFromSingleFile in the csproj).
+      - name: Publish
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          dotnet publish app/BetterMic.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:DebugType=none `
+            "-p:Version=$version" `
+            -o publish
+
+      - name: Package zip
+        run: >
+          Compress-Archive
+          -Path "publish\BetterMic.exe", "publish\micproc.dll", "THIRD_PARTY_NOTICES.md"
+          -DestinationPath "publish\better-mic.zip"
+
+      - name: Build installer
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\iscc.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          & $iscc /DAppVersion=$version installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            publish/better-mic.zip
+            publish/better-mic-setup.exe
+          generate_release_notes: true
