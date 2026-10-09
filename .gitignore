@@ -5,3 +5,4 @@ third_party/rnnoise-model/
 .wraplock
 subprojects/packagecache/
 subprojects/abseil-cpp-*/
+native/dfshim/target/

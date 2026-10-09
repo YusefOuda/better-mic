@@ -1,0 +1,24 @@
+[package]
+name = "dfshim"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Minimal panic-safe C API over DeepFilterNet3 with the model embedded"
+
+[lib]
+crate-type = ["staticlib"]
+path = "lib.rs"
+
+[dependencies]
+# tract inference + the DeepFilterNet3 model embedded via include_bytes. Not "capi":
+# its C API panics on errors and requires a model file path.
+deep_filter = { path = "../../third_party/DeepFilterNet/libDF", default-features = false, features = ["tract", "default-model"] }
+ndarray = "0.15"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+debug = false
+# unwind (not abort) so catch_unwind can turn panics into error codes
+panic = "unwind"

@@ -6,3 +6,7 @@
 	path = third_party/rnnoise
 	url = https://github.com/xiph/rnnoise.git
 	ignore = untracked
+[submodule "third_party/DeepFilterNet"]
+	path = third_party/DeepFilterNet
+	url = https://github.com/Rikorose/DeepFilterNet.git
+	ignore = untracked

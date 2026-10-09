@@ -65,10 +65,26 @@ rnnoise_dep = declare_dependency(
   link_with : rnnoise_lib,
   include_directories : include_directories('third_party/rnnoise/include'))
 
+# --- DeepFilterNet3 (Rust staticlib via cargo; model embedded) ----------------
+python = import('python').find_installation()
+dfshim_ct = custom_target('dfshim',
+  output : ['dfshim.lib', 'windows.0.52.0.lib'],
+  command : [python, files('scripts/cargo_build.py'),
+             meson.current_source_dir() / 'native/dfshim/Cargo.toml',
+             meson.current_build_dir() / 'cargo-target', '@OUTDIR@'],
+  build_always_stale : true,  # cargo does its own up-to-date check
+  console : true)
+dfshim_dep = declare_dependency(
+  link_with : dfshim_ct[0],
+  sources : dfshim_ct[1],  # import lib only has to exist in the build dir
+  # From `cargo rustc -- --print native-static-libs`
+  link_args : ['bcrypt.lib', 'advapi32.lib', 'ntdll.lib', 'userenv.lib', 'ws2_32.lib',
+               'dbghelp.lib', '/LIBPATH:' + meson.current_build_dir()])
+
 # --- micproc.dll -------------------------------------------------------------
 micproc_lib = shared_library('micproc', 'native/micproc.cc',
   cpp_args : ['-DMICPROC_BUILD'],
-  dependencies : [apm_dep, rnnoise_dep],
+  dependencies : [apm_dep, rnnoise_dep, dfshim_dep],
   gnu_symbol_visibility : 'hidden',
   install : true)
 micproc_dep = declare_dependency(

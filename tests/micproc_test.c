@@ -38,6 +38,12 @@ static float gauss(void) {
 
 static double to_db(double e) { return 10.0 * log10(e + 1e-20); }
 
+static double now_us(void) {
+  struct timespec ts;
+  timespec_get(&ts, TIME_UTC);
+  return ts.tv_sec * 1e6 + ts.tv_nsec / 1e3;
+}
+
 static micproc_config make_config(int aec, int ns, int agc) {
   micproc_config c;
   micproc_default_config(&c);
@@ -53,7 +59,8 @@ static void test_api(void) {
 
   micproc_config c;
   micproc_default_config(&c);
-  CHECK(c.aec_enabled && c.ns_mode == MICPROC_NS_RNNOISE && c.agc_enabled && c.hpf_enabled,
+  CHECK(c.aec_enabled && c.ns_mode == MICPROC_NS_DEEPFILTER && c.ns_level == 3 && c.agc_enabled &&
+            c.hpf_enabled,
         "default config");
 
   micproc* p = micproc_create(NULL);
@@ -81,6 +88,14 @@ static void test_api(void) {
   micproc_stats s;
   CHECK(micproc_get_stats(p, &s) == MICPROC_OK && s.speech_probability == -1.0f,
         "speech_probability is -1 outside RNNoise mode");
+
+  micproc_config d = make_config(0, MICPROC_NS_DEEPFILTER, 0);
+  for (int level = 0; level <= 3; ++level) {
+    d.ns_level = level;
+    if (micproc_set_config(p, &d) != MICPROC_OK) break;
+    if (level == 3) CHECK(1, "switching to DeepFilter at levels 0-3 succeeds");
+  }
+  if (d.ns_level != 3) CHECK(0, "switching to DeepFilter failed at level %d", d.ns_level);
   micproc_destroy(p);
   micproc_destroy(NULL); /* must be a no-op */
 }
@@ -142,9 +157,9 @@ static void test_aec(void) {
         out_off - out_on);
 }
 
-static void test_rnnoise(void) {
-  printf("rnnoise (stationary white noise only)\n");
-  micproc_config c = make_config(0, MICPROC_NS_RNNOISE, 0);
+static void test_noise(int mode, const char* name) {
+  printf("%s (stationary white noise only)\n", name);
+  micproc_config c = make_config(0, mode, 0);
   c.hpf_enabled = 0;
   micproc* p = micproc_create(&c);
   float frame[N];
@@ -168,6 +183,7 @@ static void test_rnnoise(void) {
   double reduction = to_db(ein) - to_db(eout);
   double prob = prob_sum / measured;
   CHECK(reduction > 15.0, "noise reduced by %.1f dB", reduction);
+  if (mode != MICPROC_NS_RNNOISE) return;
   /* Only a range check: RNNoise's VAD is trained on real speech and is not
    * meaningful on synthetic input (white noise scores ~0.6, a harmonic
    * voice-like tone ~0.0). Judge it on real recordings instead. */
@@ -190,35 +206,62 @@ static void test_agc_runs(void) {
   CHECK(err == 0 && finite, "AGC2 runs, output finite and within [-1, 1]");
 }
 
-static void test_cost(void) {
-  printf("cost (full pipeline: AEC + RNNoise + AGC, stereo render)\n");
-  micproc* p = micproc_create(NULL);
+static void test_cost(int mode, const char* name) {
+  printf("cost (full pipeline: AEC + %s + AGC, stereo render)\n", name);
+  micproc_config c = make_config(1, mode, 1);
+  micproc* p = micproc_create(&c);
   float render[2 * N], mic[N], lp = 0;
   enum { FRAMES = 3000 }; /* 30 s of audio */
+  int full = 0; /* DeepFilter frames in its full-processing SNR band (-10..30 dB) */
+  double full_us = 0, full_max_us = 0;
+  /* Mic: voiced, voice-like signal (140 Hz harmonics with a formant boost and a
+   * syllable envelope) plus background noise. DeepFilterNet skips its network
+   * for frames it judges to be pure noise or clean speech, so a noise-only
+   * input would understate its cost. */
   clock_t t0 = clock();
   for (int f = 0; f < FRAMES; ++f) {
     for (int i = 0; i < N; ++i) {
-      float s = speechish((long)f * N + i, &lp);
+      long n = (long)f * N + i;
+      double t = (double)n / MICPROC_SAMPLE_RATE, v = 0;
+      for (int h = 1; h <= 25; ++h)
+        v += sin(2 * PI * 140 * h * t) / h * (h * 140 > 300 && h * 140 < 900 ? 3 : 1);
+      double env = 0.5 + 0.5 * sin(2 * PI * 3 * t);
+      float s = speechish(n, &lp); /* game audio on the speakers */
       render[2 * i] = render[2 * i + 1] = s;
-      mic[i] = 0.3f * s + 0.003f * gauss();
+      mic[i] = (float)(0.03 * v * env) + 0.01f * gauss();
     }
     micproc_process_render(p, render, 2);
+    double c0 = now_us();
     micproc_process_capture(p, mic);
+    double cap_us = now_us() - c0;
+    micproc_stats st;
+    micproc_get_stats(p, &st);
+    if (st.ns_snr_db > -10.0f && st.ns_snr_db < 30.0f) {
+      full++;
+      full_us += cap_us;
+      if (cap_us > full_max_us) full_max_us = cap_us;
+    }
   }
   double sec = (double)(clock() - t0) / CLOCKS_PER_SEC;
   micproc_destroy(p);
   double us_per_frame = sec * 1e6 / FRAMES;
   printf("        %.0f us per 10 ms frame (%.1f%% of one core)\n", us_per_frame,
          us_per_frame / 100.0);
+  if (mode == MICPROC_NS_DEEPFILTER && full > 0)
+    printf("        %.0f%% of frames took DeepFilterNet's full path: capture %.0f us mean, "
+           "%.0f us max\n",
+           100.0 * full / FRAMES, full_us / full, full_max_us);
   CHECK(us_per_frame < 5000.0, "well under real time (budget 10000 us)");
 }
 
 int main(void) {
   test_api();
   test_aec();
-  test_rnnoise();
+  test_noise(MICPROC_NS_RNNOISE, "rnnoise");
+  test_noise(MICPROC_NS_DEEPFILTER, "deepfilter");
   test_agc_runs();
-  test_cost();
+  test_cost(MICPROC_NS_RNNOISE, "RNNoise");
+  test_cost(MICPROC_NS_DEEPFILTER, "DeepFilterNet");
   printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "PASSED", failures,
          failures == 1 ? "" : "s");
   return failures ? 1 : 0;

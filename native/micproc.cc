@@ -1,6 +1,7 @@
 #include "micproc.h"
 
 #include <atomic>
+#include <cstddef>
 #include <cmath>
 #include <limits>
 #include <mutex>
@@ -8,6 +9,16 @@
 
 #include "api/audio/audio_processing.h"
 #include "rnnoise.h"
+
+// native/dfshim (Rust): DeepFilterNet3 with the model embedded.
+extern "C" {
+struct DfShim;
+DfShim* dfs_create(float atten_lim_db);
+void dfs_destroy(DfShim* st);
+size_t dfs_frame_length(const DfShim* st);
+int32_t dfs_set_atten_lim(DfShim* st, float atten_lim_db);
+float dfs_process(DfShim* st, const float* input, float* output);
+}
 
 static_assert(sizeof(micproc_config) == 5 * sizeof(int32_t), "micproc_config ABI");
 
@@ -18,25 +29,31 @@ using webrtc::AudioProcessing;
 constexpr int kMaxRenderChannels = 8;
 constexpr float kRnnoiseScale = 32768.0f;  // RNNoise works in int16 range
 
+// ns_level -> DeepFilterNet attenuation limit. Capping attenuation keeps a
+// little background and sounds more natural; 100 dB means no cap.
+constexpr float kDeepFilterAttenDb[] = {12.0f, 18.0f, 30.0f, 100.0f};
+
 bool ValidConfig(const micproc_config& c) {
-  return c.ns_mode >= MICPROC_NS_OFF && c.ns_mode <= MICPROC_NS_RNNOISE &&
+  return c.ns_mode >= MICPROC_NS_OFF && c.ns_mode <= MICPROC_NS_DEEPFILTER &&
          c.ns_level >= 0 && c.ns_level <= 3;
 }
 
 }  // namespace
 
 // Two APM instances keep the order echo -> noise -> gain even when the noise
-// stage (RNNoise) runs outside APM:
+// stage (RNNoise, DeepFilterNet) runs outside APM:
 //   pre:  high-pass, AEC3, WebRTC NS (when selected)
 //   post: AGC2 adaptive digital gain + limiter
 struct micproc {
   rtc::scoped_refptr<AudioProcessing> pre;
   rtc::scoped_refptr<AudioProcessing> post;
   DenoiseState* rnnoise = nullptr;
+  DfShim* deepfilter = nullptr;  // created on first use (model load is slow)
 
   std::mutex capture_mutex;  // guards config and capture-path state
   micproc_config config{};
   float speech_probability = -1.0f;
+  float ns_snr_db = std::numeric_limits<float>::quiet_NaN();
   float scratch[MICPROC_FRAME_SIZE];
 
   std::atomic<bool> aec_enabled{false};  // read on the render thread
@@ -44,9 +61,24 @@ struct micproc {
 
   ~micproc() {
     if (rnnoise) rnnoise_destroy(rnnoise);
+    dfs_destroy(deepfilter);
   }
 
-  void Apply(const micproc_config& c) {
+  bool Apply(const micproc_config& c) {
+    if (c.ns_mode == MICPROC_NS_DEEPFILTER) {
+      const float atten = kDeepFilterAttenDb[c.ns_level];
+      if (!deepfilter) {
+        deepfilter = dfs_create(atten);
+        if (!deepfilter || dfs_frame_length(deepfilter) != MICPROC_FRAME_SIZE) {
+          dfs_destroy(deepfilter);
+          deepfilter = nullptr;
+          return false;
+        }
+      } else if (dfs_set_atten_lim(deepfilter, atten) != 0) {
+        return false;
+      }
+    }
+
     AudioProcessing::Config pre_cfg;
     pre_cfg.pipeline.maximum_internal_processing_rate = MICPROC_SAMPLE_RATE;
     pre_cfg.high_pass_filter.enabled = c.hpf_enabled != 0;
@@ -64,8 +96,10 @@ struct micproc {
     post->ApplyConfig(post_cfg);
 
     if (c.ns_mode != MICPROC_NS_RNNOISE) speech_probability = -1.0f;
+    if (c.ns_mode != MICPROC_NS_DEEPFILTER) ns_snr_db = std::numeric_limits<float>::quiet_NaN();
     aec_enabled.store(c.aec_enabled != 0);
     config = c;
+    return true;
   }
 };
 
@@ -76,8 +110,8 @@ int32_t micproc_api_version(void) { return MICPROC_API_VERSION; }
 void micproc_default_config(micproc_config* config) {
   if (!config) return;
   config->aec_enabled = 1;
-  config->ns_mode = MICPROC_NS_RNNOISE;
-  config->ns_level = 2;  // kHigh, used if switched to MICPROC_NS_WEBRTC
+  config->ns_mode = MICPROC_NS_DEEPFILTER;
+  config->ns_level = 3;
   config->agc_enabled = 1;
   config->hpf_enabled = 1;
 }
@@ -96,11 +130,10 @@ micproc* micproc_create(const micproc_config* config) {
   p->pre = webrtc::AudioProcessingBuilder().Create();
   p->post = webrtc::AudioProcessingBuilder().Create();
   p->rnnoise = rnnoise_create(nullptr);
-  if (!p->pre || !p->post || !p->rnnoise) {
+  if (!p->pre || !p->post || !p->rnnoise || !p->Apply(c)) {
     delete p;
     return nullptr;
   }
-  p->Apply(c);
   return p;
 }
 
@@ -110,8 +143,7 @@ int32_t micproc_set_config(micproc* p, const micproc_config* config) {
   if (!p || !config) return MICPROC_ERR_NULL;
   if (!ValidConfig(*config)) return MICPROC_ERR_ARG;
   std::lock_guard<std::mutex> lock(p->capture_mutex);
-  p->Apply(*config);
-  return MICPROC_OK;
+  return p->Apply(*config) ? MICPROC_OK : MICPROC_ERR_INTERNAL;
 }
 
 int32_t micproc_get_config(const micproc* p, micproc_config* config) {
@@ -155,6 +187,9 @@ int32_t micproc_process_capture(micproc* p, float* frame) {
     for (int i = 0; i < MICPROC_FRAME_SIZE; ++i) p->scratch[i] = frame[i] * kRnnoiseScale;
     p->speech_probability = rnnoise_process_frame(p->rnnoise, p->scratch, p->scratch);
     for (int i = 0; i < MICPROC_FRAME_SIZE; ++i) frame[i] = p->scratch[i] / kRnnoiseScale;
+  } else if (c.ns_mode == MICPROC_NS_DEEPFILTER) {
+    // NaN = DeepFilterNet failed; dfshim then passes the frame through unchanged.
+    p->ns_snr_db = dfs_process(p->deepfilter, frame, frame);
   }
 
   if (c.agc_enabled &&
@@ -179,6 +214,7 @@ int32_t micproc_get_stats(micproc* p, micproc_stats* stats) {
                            : std::numeric_limits<float>::quiet_NaN();
   std::lock_guard<std::mutex> lock(p->capture_mutex);
   stats->speech_probability = p->speech_probability;
+  stats->ns_snr_db = p->ns_snr_db;
   return MICPROC_OK;
 }
 
