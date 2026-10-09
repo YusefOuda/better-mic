@@ -25,7 +25,11 @@ sealed class Devices : IDisposable
         foreach (var d in _enumerator.EnumerateAudioEndPoints(flow, DeviceState.Active))
         {
             using (d)
-                list.Add(new AudioDevice(d.ID, d.FriendlyName, DevicePolicy.IsVirtualCable(d.DeviceFriendlyName)));
+            {
+                string iface = d.DeviceFriendlyName;
+                list.Add(new AudioDevice(d.ID, d.FriendlyName, DevicePolicy.IsVirtualCable(iface),
+                    DevicePolicy.IsOtherVirtual(iface)));
+            }
         }
         return list;
     }

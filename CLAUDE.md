@@ -27,8 +27,9 @@ Distribution: all-in-one, with an Inno Setup installer like the user's other tra
   its setup ourselves. The installer checks for it (`BetterMic.exe --check-cable`) and, if missing,
   guides the user to vb-audio.com and re-checks; the tray app also starts on its own once the
   device appears. If VB-Audio ever grants permission: `VBCABLE_Setup_x64.exe -i -h`, elevated,
-  then reboot. Apps pick "CABLE Output" as their mic. Rejected: our own attestation-signed driver (EV cert, kernel code), an APO on the real
-  mic (needs `DisableProtectedAudioDG`, fragile), test signing (anti-cheat), and
+  then reboot. Apps pick "CABLE Output" as their mic.
+  Rejected: our own attestation-signed driver (EV cert, kernel code), an APO on the real mic
+  (needs `DisableProtectedAudioDG`, fragile), test signing (anti-cheat), and
   VirtualDrivers/Virtual-Audio-Driver (beta, test-signed only).
 - **Discord:** users should turn off Discord's own noise suppression (Krisp), echo cancellation
   and AGC when using our mic; double processing sounds worse. Say so in the app and README.

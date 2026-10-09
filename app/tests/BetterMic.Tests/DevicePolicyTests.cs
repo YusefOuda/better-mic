@@ -32,6 +32,36 @@ public class DevicePolicyTests
     }
 
     [Fact]
+    public void AutomaticSkipsOtherVirtualMicsButHonorsExplicitChoice()
+    {
+        var broadcast = new AudioDevice("nvb", "Microphone (NVIDIA Broadcast)", false, IsOtherVirtual: true);
+        List<AudioDevice> devices = [Cable, broadcast, Headset];
+        Assert.Equal("headset", DevicePolicy.PickMic(null, devices, "nvb", "nvb"));
+        Assert.Equal("nvb", DevicePolicy.PickMic("nvb", devices, "headset", "headset"));
+        Assert.Null(DevicePolicy.PickMic(null, [Cable, broadcast], "nvb", "nvb"));
+    }
+
+    [Theory]
+    [InlineData("NVIDIA Broadcast", true)]
+    [InlineData("Steam Streaming Microphone", true)]
+    [InlineData("VB-Audio VoiceMeeter VAIO", true)]
+    [InlineData("VB-Audio Virtual Cable", false)] // that's ours, not "other"
+    [InlineData("Arctis Nova 3X Wireless", false)]
+    public void DetectsOtherVirtualDevices(string iface, bool expected) =>
+        Assert.Equal(expected, DevicePolicy.IsOtherVirtual(iface));
+
+    [Fact]
+    public void PrefersRegularCableInputOver16Channel()
+    {
+        List<AudioDevice> renders =
+        [
+            new("c16", "CABLE In 16 Ch (VB-Audio Virtual Cable)", true),
+            new("cin", "Speakers (VB-Audio Virtual Cable)", true),
+        ];
+        Assert.Equal("cin", DevicePolicy.PickCableInput(renders));
+    }
+
+    [Fact]
     public void PicksCableInputFromRenderDevices()
     {
         List<AudioDevice> renders = [new("spk", "Speakers", false), new("cin", "CABLE Input (VB-Audio Virtual Cable)", true)];
