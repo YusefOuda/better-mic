@@ -3,14 +3,30 @@
 Handoff from a claude.ai planning chat.
 
 ## Status / build
-- Step 1 done: `webrtc-audio-processing` v2.1 (git submodule in `third_party/`) builds as a static
-  x64 Release lib with MSVC (VS 2022 Build Tools) via `scripts\build-webrtc-apm.cmd`.
-  Output: `build\webrtc-apm-install` (headers + lib); abseil static libs stay in
-  `build\webrtc-apm\subprojects\abseil-cpp-*`.
-- Must build as **C++20** (`-Dcpp_std=c++20 -Dabseil-cpp:cpp_std=c++20`): upstream uses designated
-  initializers that MSVC rejects in C++17. Anything linking abseil/APM must also use C++20.
-- `scripts\build-apm-smoke.cmd` builds/runs `tests\apm_smoke.cc`: AEC on vs off on synthetic echo
-  (~20 dB improvement). Keep NS off when measuring AEC, or NS masks it.
+Steps 1 and 2 done. `scripts\build.cmd` (MSVC x64 Release) fetches the RNNoise model, builds
+everything with Meson and runs the tests. Output: `build\micproc.dll`.
+
+Layout:
+- `native/micproc.h` / `micproc.cc`: the C API (P/Invoke target). 48 kHz float, 480-sample frames,
+  mono capture, 1..8 ch interleaved render. Two APM instances: pre (HPF, AEC3, WebRTC NS) and
+  post (AGC2), with RNNoise between them. NS mode selectable: off / WebRTC / RNNoise (default).
+- `subprojects/webrtc-audio-processing`: submodule, v2.1 (Meson subproject; pulls abseil via wrap).
+- `third_party/rnnoise`: submodule, master @ 70f1d25 (newer model than v0.2), compiled directly
+  from `meson.build`. Model weights (`rnnoise_data.c`, ~78 MB source) are downloaded and
+  SHA-256 checked by `scripts\fetch-rnnoise-model.ps1` into `third_party/rnnoise-model` (gitignored).
+- `tests/apm_smoke.cc` (raw APM) and `tests/micproc_test.c` (DLL API, AEC, RNNoise, cost).
+
+Gotchas:
+- Everything is **C++20**: upstream APM uses designated initializers MSVC rejects in C++17, and
+  abseil must match the std of its users.
+- Static CRT (`b_vscrt=static_from_buildtype`): DLL depends only on KERNEL32 + WINMM.
+- WebRTC hard-codes `WEBRTC_ENABLE_SYMBOL_EXPORT`, so ~156 WebRTC C++ symbols are also exported
+  from micproc.dll. Harmless; can't be undone from outside (its `/D` comes after ours).
+- Measuring AEC: keep NS off, or NS masks it. Pure tones are a bad AEC test signal.
+- RNNoise VAD (`speech_probability`) is meaningless on synthetic signals; judge it on real speech.
+- AEC stats look off on synthetic input (ERLE ~0.2 dB, delay 16 ms vs real 40 ms) although
+  cancellation works (~20 dB). Recheck with real audio before showing them in a UI.
+- Measured cost: ~0.34 ms per 10 ms frame for AEC + RNNoise + AGC (3.4% of one core).
 - Tooling: Python 3.12 (user install) + `pip install --user meson ninja`.
 
 ## Goal
@@ -76,6 +92,7 @@ Speaker loopback (WASAPI loopback) ──────┘
 
 ## Open decisions
 - Language confirmation (C# assumed)
-- Which noise suppressor: WebRTC NS, RNNoise, or DeepFilterNet
+- Which noise suppressor: WebRTC NS, RNNoise, or DeepFilterNet (RNNoise is the current default;
+  needs evaluation on real recordings, and DeepFilterNet would be a new `micproc_ns_mode`)
 - Standalone app vs. VST plugin
 - Whether to merge into usb-headset-tray or keep separate

@@ -1,5 +1,3 @@
 build/
-*.obj
-*.exe
-*.pdb
+third_party/rnnoise-model/
 .vs/

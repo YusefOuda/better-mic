@@ -1,3 +1,8 @@
 [submodule "third_party/webrtc-audio-processing"]
-	path = third_party/webrtc-audio-processing
+	path = subprojects/webrtc-audio-processing
 	url = https://gitlab.freedesktop.org/pulseaudio/webrtc-audio-processing.git
+	ignore = untracked
+[submodule "third_party/rnnoise"]
+	path = third_party/rnnoise
+	url = https://github.com/xiph/rnnoise.git
+	ignore = untracked
