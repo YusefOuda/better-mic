@@ -149,3 +149,7 @@ Better Mic uses [WebRTC Audio Processing](https://gitlab.freedesktop.org/pulseau
 
 [VB-Cable](https://vb-audio.com/Cable/) is a separate donationware product by VB-Audio and isn't
 included.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

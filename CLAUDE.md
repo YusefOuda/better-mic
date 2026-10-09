@@ -111,4 +111,4 @@ Speaker loopback (WASAPI loopback) ──────┘
    Local installer build: publish to `publish\`, then
    `"%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" /DAppVersion=x.y.z installer.iss`.
    Self-contained single-file publish: exe ~72 MB + micproc.dll 41 MB; installer ~92 MB.
-6. Open: project LICENSE not chosen yet (all dependencies are permissive).
+6. License: MIT (LICENSE). v0.1.0 tagged as the first release.
