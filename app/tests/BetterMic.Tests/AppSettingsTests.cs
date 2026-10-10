@@ -17,7 +17,7 @@ public class AppSettingsTests : IDisposable
     {
         var s = new AppSettings();
         Assert.Equal(NoiseMode.RNNoise, s.NoiseMode);
-        Assert.Equal(3, s.NoiseLevel);
+        Assert.Equal(2, s.NoiseLevel);
         Assert.Equal(AecMode.Auto, s.EchoCancellation);
         Assert.True(s.ProcessingEnabled);
     }

@@ -59,7 +59,7 @@ static void test_api(void) {
 
   micproc_config c;
   micproc_default_config(&c);
-  CHECK(c.aec_enabled && c.ns_mode == MICPROC_NS_RNNOISE && c.ns_level == 3 && c.agc_enabled &&
+  CHECK(c.aec_enabled && c.ns_mode == MICPROC_NS_RNNOISE && c.ns_level == 2 && c.agc_enabled &&
             c.hpf_enabled,
         "default config");
 
@@ -190,6 +190,35 @@ static void test_noise(int mode, const char* name) {
   CHECK(prob >= 0.0 && prob <= 1.0, "speech probability in [0, 1] (mean %.2f)", prob);
 }
 
+/* Noise reduction (dB) of RNNoise on stationary white noise at one strength level */
+static double rnnoise_reduction_db(int level) {
+  micproc_config c = make_config(0, MICPROC_NS_RNNOISE, 0);
+  c.hpf_enabled = 0;
+  c.ns_level = level;
+  micproc* p = micproc_create(&c);
+  float frame[N];
+  double ein = 0, eout = 0;
+  rng_state = 4242;
+  for (int f = 0; f < 500; ++f) {
+    for (int i = 0; i < N; ++i) frame[i] = 0.02f * gauss();
+    if (f >= 300) for (int i = 0; i < N; ++i) ein += (double)frame[i] * frame[i];
+    micproc_process_capture(p, frame);
+    if (f >= 300) for (int i = 0; i < N; ++i) eout += (double)frame[i] * frame[i];
+  }
+  micproc_destroy(p);
+  return to_db(ein) - to_db(eout);
+}
+
+static void test_rnnoise_strength(void) {
+  printf("rnnoise strength (white noise reduction)\n");
+  double r[4];
+  for (int level = 0; level < 4; ++level) r[level] = rnnoise_reduction_db(level);
+  printf("        low %.1f / medium %.1f / high %.1f / max %.1f dB\n", r[0], r[1], r[2], r[3]);
+  /* Levels 0-2 keep the original 12/18/30 dB down; RNNoise's own suppression adds a little */
+  CHECK(fabs(r[0] - 12.0) < 2.0 && fabs(r[1] - 18.0) < 2.5 && r[2] > 24.0, "levels cap reduction near 12/18/30 dB");
+  CHECK(r[0] < r[1] && r[1] < r[2] && r[2] <= r[3] + 0.5, "reduction grows with strength");
+}
+
 static void test_agc_runs(void) {
   printf("agc\n");
   micproc_config c = make_config(0, MICPROC_NS_OFF, 1);
@@ -259,6 +288,7 @@ int main(void) {
   test_aec();
   test_noise(MICPROC_NS_RNNOISE, "rnnoise");
   test_noise(MICPROC_NS_DEEPFILTER, "deepfilter");
+  test_rnnoise_strength();
   test_agc_runs();
   test_cost(MICPROC_NS_RNNOISE, "RNNoise");
   test_cost(MICPROC_NS_DEEPFILTER, "DeepFilterNet");

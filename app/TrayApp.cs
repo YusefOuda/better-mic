@@ -299,7 +299,7 @@ class TrayApp : ApplicationContext
             root.DropDownItems.Add(item);
         }
         root.DropDownItems.Add(new ToolStripSeparator());
-        bool hasStrength = _settings.NoiseMode is NoiseMode.DeepFilter or NoiseMode.WebRtc;
+        bool hasStrength = _settings.NoiseMode != NoiseMode.Off;
         string[] levels = ["Low", "Medium", "High", "Maximum"];
         var strength = new ToolStripMenuItem("Strength") { Enabled = hasStrength };
         for (int level = 0; level < levels.Length; level++)

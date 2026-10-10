@@ -51,6 +51,9 @@ Gotchas:
   from micproc.dll. Harmless; can't be undone from outside (its `/D` comes after ours).
 - Measuring AEC: keep NS off, or NS masks it. Pure tones are a bad AEC test signal.
 - RNNoise VAD (`speech_probability`) is meaningless on synthetic signals; judge it on real speech.
+- RNNoise output lags its input by 2 frames (960 samples, measured by cross-correlation). `ns_level`
+  0-2 mixes the delayed original back in (12/18/30 dB down) because pure RNNoise gates word gaps to
+  silence, which the user heard as cutting in and out once AGC raised the speech around it.
 - DeepFilterNet outputs silence and skips its network for frames below -10 dB local SNR (pure
   noise) and skips processing above 30 dB. Noise-only input therefore understates its CPU cost;
   `micproc_stats.ns_snr_db` shows which band a frame fell in.

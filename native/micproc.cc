@@ -33,6 +33,14 @@ constexpr float kRnnoiseScale = 32768.0f;  // RNNoise works in int16 range
 // little background and sounds more natural; 100 dB means no cap.
 constexpr float kDeepFilterAttenDb[] = {12.0f, 18.0f, 30.0f, 100.0f};
 
+// ns_level -> share of the original mixed back into RNNoise's output (the same
+// 12/18/30 dB limits; level 3 = pure RNNoise). Without a floor RNNoise gates the
+// gaps between words to near silence, which sounds choppy, especially once AGC
+// raises the speech around it.
+constexpr float kRnnoiseDryMix[] = {0.25118864f, 0.12589254f, 0.03162278f, 0.0f};
+// RNNoise's output lags its input by two frames (measured: 960 samples)
+constexpr int kRnnoiseDelayFrames = 2;
+
 bool ValidConfig(const micproc_config& c) {
   return c.ns_mode >= MICPROC_NS_OFF && c.ns_mode <= MICPROC_NS_DEEPFILTER &&
          c.ns_level >= 0 && c.ns_level <= 3;
@@ -55,6 +63,9 @@ struct micproc {
   float speech_probability = -1.0f;
   float ns_snr_db = std::numeric_limits<float>::quiet_NaN();
   float scratch[MICPROC_FRAME_SIZE];
+  // RNNoise input history, so the dry signal mixed back in lines up with its output
+  float rnnoise_dry[kRnnoiseDelayFrames][MICPROC_FRAME_SIZE] = {};
+  int rnnoise_dry_pos = 0;
 
   std::atomic<bool> aec_enabled{false};  // read on the render thread
   std::atomic<int32_t> stream_delay_ms{0};
@@ -111,7 +122,7 @@ void micproc_default_config(micproc_config* config) {
   if (!config) return;
   config->aec_enabled = 1;
   config->ns_mode = MICPROC_NS_RNNOISE;
-  config->ns_level = 3;
+  config->ns_level = 2;  // High: keeps a faint floor instead of gating word gaps to silence
   config->agc_enabled = 1;
   config->hpf_enabled = 1;
 }
@@ -186,7 +197,16 @@ int32_t micproc_process_capture(micproc* p, float* frame) {
   if (c.ns_mode == MICPROC_NS_RNNOISE) {
     for (int i = 0; i < MICPROC_FRAME_SIZE; ++i) p->scratch[i] = frame[i] * kRnnoiseScale;
     p->speech_probability = rnnoise_process_frame(p->rnnoise, p->scratch, p->scratch);
-    for (int i = 0; i < MICPROC_FRAME_SIZE; ++i) frame[i] = p->scratch[i] / kRnnoiseScale;
+    // The slot about to be overwritten holds the input from kRnnoiseDelayFrames ago
+    float* dry = p->rnnoise_dry[p->rnnoise_dry_pos];
+    const float mix = kRnnoiseDryMix[c.ns_level];
+    for (int i = 0; i < MICPROC_FRAME_SIZE; ++i) {
+      const float input = frame[i];
+      // Scaled so speech, which RNNoise passes, keeps its level
+      frame[i] = (1.0f - mix) * (p->scratch[i] / kRnnoiseScale) + mix * dry[i];
+      dry[i] = input;
+    }
+    p->rnnoise_dry_pos = (p->rnnoise_dry_pos + 1) % kRnnoiseDelayFrames;
   } else if (c.ns_mode == MICPROC_NS_DEEPFILTER) {
     // NaN = DeepFilterNet failed; dfshim then passes the frame through unchanged.
     p->ns_snr_db = dfs_process(p->deepfilter, frame, frame);

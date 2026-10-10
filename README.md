@@ -12,7 +12,9 @@ It only processes **your own mic**. No camera effects and no processing of incom
   - **RNNoise** (default): light neural network; handles fans, hum and room noise and sounds natural
   - **DeepFilterNet 3**: stronger; better on keyboard clicks and background voices, adds ~40 ms of latency
   - **WebRTC**: basic noise suppression
-  - Strength setting (Low / Medium / High / Maximum) for DeepFilterNet and WebRTC
+  - Strength setting (Low / Medium / High / Maximum). For RNNoise and DeepFilterNet, Low / Medium /
+    High keep a faint background (12 / 18 / 30 dB down) instead of cutting the gaps between words to
+    silence, which sounds more natural, especially with automatic gain on
 - **Echo cancellation** (WebRTC AEC3) removes game and voice-chat audio that your mic picks up from
   your speakers. **Auto** mode turns it on only when you're using speakers, not headphones or a headset
 - **Automatic gain control** (WebRTC AGC2) evens out your volume, with a limiter
@@ -125,7 +127,9 @@ amber when something needs attention.
   Sound settings → More sound settings → Playback (right-click → Enable).
 - **Others hear nothing**: check that the app (Discord, the game) uses **CABLE Output** as its input,
   and that the **Mic** line in the tray menu shows your real microphone.
-- **Voice sounds choppy or cut off with DeepFilterNet**: lower **Strength** to Medium or High, or use RNNoise.
+- **Voice sounds choppy or cuts in and out** (most noticeable with Automatic gain on): lower
+  **Noise removal → Strength** to High or Medium. Maximum silences the gaps between words
+  completely, and automatic gain makes that contrast more obvious.
 - **Diagnostics**: `BetterMic.exe --selftest 10 > selftest.txt` runs the audio pipeline for 10
   seconds without the tray UI and writes the chosen devices and health counters (frames, processing
   time, underruns, drops) to `selftest.txt`. Nothing is recorded.

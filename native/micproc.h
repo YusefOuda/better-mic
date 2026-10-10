@@ -63,7 +63,8 @@ typedef enum micproc_ns_mode {
 typedef struct micproc_config {
   int32_t aec_enabled;   /* echo cancellation; needs render frames */
   int32_t ns_mode;       /* micproc_ns_mode */
-  int32_t ns_level;      /* strength 0 low .. 3 max; WebRTC and DeepFilter (ignored by RNNoise) */
+  int32_t ns_level;      /* strength 0 low .. 3 max. DeepFilter and RNNoise: noise kept 12/18/30 dB
+                            below the original, 3 = no limit. WebRTC: its own 4 levels. */
   int32_t agc_enabled;   /* adaptive digital gain + limiter */
   int32_t hpf_enabled;   /* high-pass filter (removes DC and rumble) */
 } micproc_config;
@@ -79,7 +80,7 @@ typedef struct micproc micproc;
 
 MICPROC_API int32_t MICPROC_CALL micproc_api_version(void);
 
-/* Fills *config with defaults: AEC on, RNNoise, AGC on, HPF on (ns_level 3 if switched). */
+/* Fills *config with defaults: AEC on, RNNoise at strength 2 (High), AGC on, HPF on. */
 MICPROC_API void MICPROC_CALL micproc_default_config(micproc_config* config);
 
 /* Returns NULL on failure. config may be NULL for defaults. */

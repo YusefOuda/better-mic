@@ -9,8 +9,8 @@ class AppSettings
     // Off = mic passes through to VB-Cable unprocessed (Discord keeps working)
     public bool ProcessingEnabled { get; set; } = true;
     public NoiseMode NoiseMode { get; set; } = NoiseMode.RNNoise;
-    // 0 low .. 3 max; used by DeepFilter and WebRTC NS
-    public int NoiseLevel { get; set; } = 3;
+    // 0 low .. 3 max (all noise modes). Default High: Maximum gates word gaps to silence, which sounds choppy with AGC
+    public int NoiseLevel { get; set; } = 2;
     public AecMode EchoCancellation { get; set; } = AecMode.Auto;
     public bool AutoGain { get; set; } = true;
     // Null = automatic (Windows default mic, skipping VB-Cable)
