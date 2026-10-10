@@ -63,7 +63,11 @@ class TrayApp : ApplicationContext
         var ui = SynchronizationContext.Current!;
         _engine.Faulted += message => ui.Post(_ => OnFault(message), null);
         _devices = new Devices();
-        _devices.Changed += () => ScheduleReconcile(DeviceSettleDelay);
+        _devices.Changed += change =>
+        {
+            Log.Info($"Device change: {change}");
+            ScheduleReconcile(DeviceSettleDelay);
+        };
 
         _reconcileTimer.Tick += (_, _) =>
         {
@@ -104,7 +108,18 @@ class TrayApp : ApplicationContext
     // Brings the engine in line with the current devices and settings. Safe to call any time.
     void Reconcile()
     {
-        var selection = DeviceSelection.Resolve(_devices, _settings);
+        DeviceSelection selection;
+        try
+        {
+            selection = DeviceSelection.Resolve(_devices, _settings);
+        }
+        catch (Exception e)
+        {
+            // Endpoints can vanish mid-enumeration while another app (e.g. a streaming host) swaps devices
+            Log.Error("Reading audio devices failed; retrying", e);
+            ScheduleReconcile(RetryDelay);
+            return;
+        }
         var (micId, cableId, outputId, aec) = (selection.MicId, selection.CableId, selection.OutputId, selection.AecEnabled);
         _micName = selection.MicName;
         _outputFormFactor = selection.OutputFormFactor;
@@ -142,6 +157,7 @@ class TrayApp : ApplicationContext
             var config = _settings.ToConfig(aec);
             if (!_engine.IsRunning || micId != _micId || cableId != _cableId)
             {
+                Log.Info($"Starting mic \"{selection.MicName}\" ({micId}) -> cable {cableId}");
                 _engine.Start(micId, cableId, config);
                 _micId = micId;
                 _cableId = cableId;
@@ -153,18 +169,22 @@ class TrayApp : ApplicationContext
             string? loopbackId = aec ? outputId : null;
             if (loopbackId != _loopbackId || (loopbackId != null && !_engine.IsLoopbackRunning))
             {
+                Log.Info(loopbackId == null ? "Echo cancellation off"
+                    : $"Echo reference: \"{selection.OutputName}\" ({loopbackId}, {selection.OutputFormFactor})");
                 _engine.SetLoopback(loopbackId);
                 _loopbackId = loopbackId;
             }
             _aecActive = aec;
             _problem = null;
         }
-        catch (DllNotFoundException)
+        catch (DllNotFoundException e)
         {
+            Log.Error("micproc.dll not found", e);
             StopEngine("micproc.dll is missing; reinstall Better Mic");
         }
         catch (Exception e)
         {
+            Log.Error("Starting audio failed; retrying", e);
             StopEngine($"Couldn't start audio: {e.Message}");
             ScheduleReconcile(RetryDelay);
         }
@@ -173,6 +193,7 @@ class TrayApp : ApplicationContext
 
     void StopEngine(string problem)
     {
+        if (problem != _problem) Log.Info($"Stopped: {problem}");
         _engine.Stop();
         _micId = _cableId = _loopbackId = null;
         _aecActive = false;
@@ -383,6 +404,8 @@ class TrayApp : ApplicationContext
         };
         root.DropDownItems.Add(startup);
         root.DropDownItems.Add(updates);
+        root.DropDownItems.Add(new ToolStripSeparator());
+        root.DropDownItems.Add("Open log folder", null, (_, _) => OpenUrl(Log.Folder));
         return root;
     }
 

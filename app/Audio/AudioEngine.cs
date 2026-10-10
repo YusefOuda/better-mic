@@ -47,7 +47,7 @@ sealed class AudioEngine : IDisposable
             _processor.SetConfig(config);
         }
         _mic = new MicPipeline(micId, cableId, _processor, () => _processingEnabled, () => _muted,
-            e => Faulted?.Invoke($"Microphone stream stopped: {e.Message}"));
+            e => Fault("Microphone stream stopped", e));
     }
 
     // Starts loopback capture of renderId for echo cancellation, or stops it when null.
@@ -57,7 +57,13 @@ sealed class AudioEngine : IDisposable
         _loopback = null;
         if (renderId != null && _processor != null)
             _loopback = new LoopbackFeeder(renderId, _processor,
-                e => Faulted?.Invoke($"Speaker capture stopped: {e.Message}"));
+                e => Fault("Speaker capture stopped", e));
+    }
+
+    void Fault(string what, Exception e)
+    {
+        Log.Error(what, e);
+        Faulted?.Invoke($"{what}: {e.Message}");
     }
 
     public void Configure(MicProcConfig config) => _processor?.SetConfig(config);

@@ -19,12 +19,22 @@ static class Program
         using var mutex = new Mutex(true, "better-mic-{6F1D2A9C-3B7E-4C51-9A80-D2E4F5A6B7C8}", out var firstInstance);
         if (!firstInstance) return 0;
 
+        Log.Info($"Better Mic {UpdateChecker.CurrentVersion} starting");
+        // A modal Continue/Quit dialog in the middle of a game helps nobody: log UI-thread
+        // exceptions and keep running instead
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+        Application.ThreadException += (_, e) => Log.Error("Unhandled exception on the UI thread", e.Exception);
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            Log.Error($"Unhandled exception (terminating: {e.IsTerminating})", e.ExceptionObject as Exception);
+        TaskScheduler.UnobservedTaskException += (_, e) => Log.Error("Unobserved task exception", e.Exception);
+
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         // Device notifications are posted through this; no Control exists yet to install it
         SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
         Application.Run(new TrayApp());
+        Log.Info("Exiting");
         return 0;
     }
 

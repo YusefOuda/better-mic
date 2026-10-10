@@ -13,13 +13,13 @@ sealed class Devices : IDisposable
     readonly MMDeviceEnumerator _enumerator = new();
     readonly Watcher _watcher;
 
-    // Raised on the UI thread after any endpoint change (added/removed/state/default).
-    public event Action? Changed;
+    // Raised on the UI thread after any endpoint change (added/removed/state/default), with a description.
+    public event Action<string>? Changed;
 
     public Devices()
     {
         var ui = SynchronizationContext.Current ?? throw new InvalidOperationException("Create on the UI thread");
-        _watcher = new Watcher(() => ui.Post(_ => Changed?.Invoke(), null));
+        _watcher = new Watcher(change => ui.Post(_ => Changed?.Invoke(change), null));
         _enumerator.RegisterEndpointNotificationCallback(_watcher);
     }
 
@@ -30,9 +30,17 @@ sealed class Devices : IDisposable
         {
             using (d)
             {
-                string iface = d.DeviceFriendlyName;
-                list.Add(new AudioDevice(d.ID, d.FriendlyName, DevicePolicy.IsVirtualCable(iface),
-                    DevicePolicy.IsOtherVirtual(iface)));
+                try
+                {
+                    string iface = d.DeviceFriendlyName;
+                    list.Add(new AudioDevice(d.ID, d.FriendlyName, DevicePolicy.IsVirtualCable(iface),
+                        DevicePolicy.IsOtherVirtual(iface)));
+                }
+                catch (Exception e)
+                {
+                    // Removed while we were enumerating; the removal notification triggers another pass
+                    Log.Error($"Skipping {flow} device that couldn't be read: {e.Message}");
+                }
             }
         }
         return list;
@@ -47,7 +55,13 @@ sealed class Devices : IDisposable
             foreach (var d in enumerator.EnumerateAudioEndPoints(flow, states))
             {
                 using (d)
-                    if (DevicePolicy.IsVirtualCable(d.DeviceFriendlyName)) return true;
+                {
+                    try
+                    {
+                        if (DevicePolicy.IsVirtualCable(d.DeviceFriendlyName)) return true;
+                    }
+                    catch { } // removed while enumerating
+                }
             }
             return false;
         }
@@ -91,12 +105,13 @@ sealed class Devices : IDisposable
     }
 
     // Called by the audio service on its own threads; must return quickly.
-    sealed class Watcher(Action notify) : IMMNotificationClient
+    sealed class Watcher(Action<string> notify) : IMMNotificationClient
     {
-        public void OnDeviceStateChanged(string deviceId, DeviceState newState) => notify();
-        public void OnDeviceAdded(string pwstrDeviceId) => notify();
-        public void OnDeviceRemoved(string deviceId) => notify();
-        public void OnDefaultDeviceChanged(DataFlow flow, Role role, string defaultDeviceId) => notify();
+        public void OnDeviceStateChanged(string deviceId, DeviceState newState) => notify($"{deviceId} is now {newState}");
+        public void OnDeviceAdded(string pwstrDeviceId) => notify($"{pwstrDeviceId} added");
+        public void OnDeviceRemoved(string deviceId) => notify($"{deviceId} removed");
+        public void OnDefaultDeviceChanged(DataFlow flow, Role role, string defaultDeviceId) =>
+            notify($"default {flow} {role} device is now {defaultDeviceId ?? "none"}");
         public void OnPropertyValueChanged(string pwstrDeviceId, PropertyKey key) { }
     }
 }
