@@ -16,6 +16,8 @@ DefaultDirName={localappdata}\better-mic
 DisableDirPage=yes
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
+; Restart Manager can't close a tray app; StopApp below does it
+CloseApplications=no
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=publish
@@ -39,10 +41,37 @@ Name: "{userstartmenu}\{#AppName}"; Filename: "{app}\{#AppExeName}"
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
 
-[UninstallRun]
-Filename: "taskkill"; Parameters: "/f /im {#AppExeName}"; Flags: runhidden waituntilterminated; RunOnceId: "StopApp"
-
 [Code]
+// Closes the running app before its files are replaced or deleted. --quit lets it exit cleanly
+// (tray icon removed); versions older than --quit ignore it and are force-closed after 5 s.
+const
+  AppMutex = 'better-mic-{6F1D2A9C-3B7E-4C51-9A80-D2E4F5A6B7C8}';
+
+procedure StopApp();
+var
+  ResultCode, I: Integer;
+begin
+  if not CheckForMutexes(AppMutex) then Exit;
+  Exec(ExpandConstant('{app}\{#AppExeName}'), '--quit', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  for I := 1 to 50 do
+  begin
+    if not CheckForMutexes(AppMutex) then Exit;
+    Sleep(100);
+  end;
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/f /im {#AppExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  for I := 1 to 20 do
+  begin
+    if not CheckForMutexes(AppMutex) then Exit;
+    Sleep(100);
+  end;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  StopApp();
+  Result := '';
+end;
+
 // VB-Cable's license doesn't allow installing it from another setup program, so this page only
 // checks for it and points the user to vb-audio.com. The app itself starts processing as soon as
 // the device appears, so finishing without it is fine.
@@ -156,9 +185,11 @@ begin
   end;
 end;
 
-// Remove the "Start with Windows" entry the app may have created
+// Stop the app before its files are deleted; remove the "Start with Windows" entry it may have created
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
+  if CurUninstallStep = usUninstall then
+    StopApp();
   if CurUninstallStep = usPostUninstall then
     RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'better-mic');
 end;

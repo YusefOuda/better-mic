@@ -10,6 +10,12 @@ static class Program
     {
         // Used by the installer: exit code 0 = VB-Cable ready, 1 = not installed, 2 = playback side disabled
         if (args.Contains("--check-cable")) return CheckCable();
+        // Used by the installer: asks the running instance to exit before its files are replaced
+        if (args.Contains("--quit"))
+        {
+            QuitSignal.Send();
+            return 0;
+        }
         // Diagnostics: runs the real pipeline headless and prints health once a second.
         // WinExe has no console, so redirect stdout: BetterMic.exe --selftest 10 > out.txt
         int selfTest = Array.IndexOf(args, "--selftest");
@@ -33,7 +39,9 @@ static class Program
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         // Device notifications are posted through this; no Control exists yet to install it
         SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
-        Application.Run(new TrayApp());
+        var app = new TrayApp();
+        QuitSignal.Listen(app.ExitThread);
+        Application.Run(app);
         Log.Info("Exiting");
         return 0;
     }
