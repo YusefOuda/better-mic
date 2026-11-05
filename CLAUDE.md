@@ -81,6 +81,10 @@ Mic (WASAPI, 48 kHz mono, 10 ms frames) ─┐
 Speaker loopback (WASAPI loopback) ──────┘
 ```
 - Order matters: echo → noise → gain. (Gain before noise removal amplifies the noise.)
+- Standby: the pipeline only runs while another process has an active session on VB-Cable's capture
+  side (`ListenerWatcher`: session-created + state-change notifications, 30 s safety recount, 10 s
+  grace before stopping). Open WASAPI streams make the audio driver hold a SYSTEM power request
+  ("An audio stream is currently in use"), which blocked idle sleep when we ran 24/7.
 - AEC3 needs the render reference (what the speakers are playing) via WASAPI loopback on the
   default render device. It estimates the delay itself; still set a sensible stream delay hint.
 

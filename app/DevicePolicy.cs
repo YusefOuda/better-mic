@@ -66,4 +66,8 @@ static class DevicePolicy
         activeRenderDevices.Where(d => d.IsVirtualCable)
             .OrderBy(d => d.Name.Contains("16 Ch", StringComparison.OrdinalIgnoreCase))
             .FirstOrDefault()?.Id;
+
+    // VB-Cable's capture side ("CABLE Output"): what apps record from to hear us
+    public static IReadOnlyList<string> CableOutputs(IReadOnlyList<AudioDevice> activeCaptureDevices) =>
+        activeCaptureDevices.Where(d => d.IsVirtualCable).Select(d => d.Id).ToList();
 }

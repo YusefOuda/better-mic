@@ -42,6 +42,10 @@ Speakers (loopback) ──┘ (echo reference)
 
 Apps select **CABLE Output** as their microphone and get the cleaned-up audio.
 
+Better Mic only runs while some app is recording from CABLE Output (it starts the moment one
+does, and stops 10 seconds after the last one lets go). The rest of the time it's on standby with
+no audio streams open, so it doesn't keep your PC awake or use any CPU.
+
 ## Requirements
 
 - Windows 10 / 11 (x64)
@@ -111,8 +115,8 @@ processing keeps running, so unmuting is instant. Mute isn't remembered across r
 - **Discord setup…**: the setup steps above
 - **Settings**: Start with Windows, Check for updates
 
-The tray icon is green while processing, red with a slash when muted, grey when bypassed, and
-amber when something needs attention.
+The tray icon is green while processing, faded green on standby (no app is using CABLE Output),
+red with a slash when muted, grey when bypassed, and amber when something needs attention.
 
 ## Troubleshooting
 

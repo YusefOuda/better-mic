@@ -12,6 +12,8 @@ class TrayApp : ApplicationContext
     const string VbCableUrl = "https://vb-audio.com/Cable/";
     static readonly TimeSpan DeviceSettleDelay = TimeSpan.FromMilliseconds(500);
     static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(3);
+    // Keep running this long after the last app stops listening, so a quick rejoin doesn't restart audio
+    static readonly TimeSpan StandbyDelay = TimeSpan.FromSeconds(10);
     static readonly TimeSpan FirstUpdateCheckDelay = TimeSpan.FromSeconds(30);
     static readonly TimeSpan UpdateCheckInterval = TimeSpan.FromDays(1);
 
@@ -23,6 +25,10 @@ class TrayApp : ApplicationContext
     readonly System.Windows.Forms.Timer _reconcileTimer = new();
     readonly System.Windows.Forms.Timer _updateTimer = new();
     readonly System.Windows.Forms.Timer _clipTimer = new() { Interval = 1000 };
+    readonly System.Windows.Forms.Timer _standbyTimer = new() { Interval = (int)StandbyDelay.TotalMilliseconds };
+    ListenerWatcher? _listeners;
+    // An app is recording from CABLE Output (or stopped less than StandbyDelay ago)
+    bool _listening;
     readonly ClipWarner _clipWarner = new();
     MicTestForm? _testForm;
 
@@ -35,6 +41,8 @@ class TrayApp : ApplicationContext
     string? _micName;
     // Why the engine isn't running, or the last audio fault; null when healthy
     string? _problem;
+    // Healthy but stopped because nothing is listening; closing the streams lets Windows sleep
+    bool _standby;
     CableState _cableState = CableState.Ready;
     CableState? _notifiedCableState;
     // Not saved: starting muted after a restart would be easy to miss
@@ -86,6 +94,13 @@ class TrayApp : ApplicationContext
         _clipTimer.Tick += (_, _) => CheckClipping();
         _clipTimer.Start();
 
+        _standbyTimer.Tick += (_, _) =>
+        {
+            _standbyTimer.Stop();
+            _listening = false;
+            Reconcile();
+        };
+
         Reconcile();
         if (!_settings.SetupShown && _cableId != null)
         {
@@ -123,6 +138,7 @@ class TrayApp : ApplicationContext
         var (micId, cableId, outputId, aec) = (selection.MicId, selection.CableId, selection.OutputId, selection.AecEnabled);
         _micName = selection.MicName;
         _outputFormFactor = selection.OutputFormFactor;
+        WatchListeners(selection.CableOutputIds);
 
         if (cableId == null)
         {
@@ -151,6 +167,13 @@ class TrayApp : ApplicationContext
             UpdateTray();
             return;
         }
+        // The test window records from the engine directly, so it needs it running too
+        if (!_listening && _testForm == null)
+        {
+            Standby();
+            UpdateTray();
+            return;
+        }
 
         try
         {
@@ -176,6 +199,7 @@ class TrayApp : ApplicationContext
             }
             _aecActive = aec;
             _problem = null;
+            _standby = false;
         }
         catch (DllNotFoundException e)
         {
@@ -194,10 +218,52 @@ class TrayApp : ApplicationContext
     void StopEngine(string problem)
     {
         if (problem != _problem) Log.Info($"Stopped: {problem}");
+        ReleaseEngine();
+        _problem = problem;
+    }
+
+    void Standby()
+    {
+        if (!_standby) Log.Info("Standby: no app is recording from CABLE Output");
+        ReleaseEngine();
+        _problem = null;
+        _standby = true;
+    }
+
+    void ReleaseEngine()
+    {
         _engine.Stop();
         _micId = _cableId = _loopbackId = null;
         _aecActive = false;
-        _problem = problem;
+        _standby = false;
+    }
+
+    // (Re)creates the watcher when VB-Cable's capture endpoints change
+    void WatchListeners(IReadOnlyList<string> cableOutputIds)
+    {
+        if (_listeners != null && _listeners.DeviceIds.SequenceEqual(cableOutputIds)) return;
+        _listeners?.Dispose();
+        _listeners = null;
+        _standbyTimer.Stop();
+        _listening = false;
+        if (cableOutputIds.Count > 0)
+            _listeners = new ListenerWatcher(cableOutputIds, OnListenersChanged);
+    }
+
+    void OnListenersChanged(bool listening)
+    {
+        Log.Info(listening ? "An app is recording from CABLE Output" : "No app is recording from CABLE Output");
+        if (listening)
+        {
+            _standbyTimer.Stop();
+            if (_listening) return;
+            _listening = true;
+            Reconcile();
+        }
+        else if (_listening)
+        {
+            _standbyTimer.Start();
+        }
     }
 
     // Audio thread died (device unplugged, driver reset, ...). Restart from scratch shortly.
@@ -231,7 +297,12 @@ class TrayApp : ApplicationContext
             return;
         }
         _testForm = new MicTestForm(_engine, () => _problem);
-        _testForm.FormClosed += (_, _) => _testForm = null;
+        _testForm.FormClosed += (_, _) =>
+        {
+            _testForm = null;
+            Reconcile();
+        };
+        Reconcile();
         _testForm.Show();
     }
 
@@ -241,12 +312,15 @@ class TrayApp : ApplicationContext
     {
         var state = _problem != null ? IconState.Problem
             : _muted ? IconState.Muted
+            : _standby ? IconState.Standby
             : _settings.ProcessingEnabled ? IconState.Active : IconState.Bypassed;
         var old = _tray.Icon;
         _tray.Icon = IconRenderer.Render(state, SystemInformation.SmallIconSize.Width);
         old?.Dispose();
 
-        string text = _problem ?? (_muted ? "Muted (click to unmute)" : _settings.ProcessingEnabled
+        string text = _problem ?? (_muted ? "Muted (click to unmute)"
+            : _standby ? "Standby (starts when an app uses CABLE Output)"
+            : _settings.ProcessingEnabled
             ? $"{NoiseName(_settings.NoiseMode)}, echo {(_aecActive ? "on" : "off")}"
             : "Bypassed (unprocessed mic)");
         // NotifyIcon.Text is limited to 127 characters
@@ -259,7 +333,8 @@ class TrayApp : ApplicationContext
         var menu = _tray.ContextMenuStrip!;
         menu.Items.Clear();
 
-        string status = _problem ?? (_muted ? "Muted" : _settings.ProcessingEnabled ? "Active" : "Bypassed");
+        string status = _problem ?? (_muted ? "Muted" : _standby ? "Standby (no app is using CABLE Output)"
+            : _settings.ProcessingEnabled ? "Active" : "Bypassed");
         menu.Items.Add(new ToolStripMenuItem($"{AppName}: {status}") { Enabled = false });
         if (_micName != null && _problem == null)
             menu.Items.Add(new ToolStripMenuItem($"Mic: {_micName}") { Enabled = false });
@@ -473,7 +548,9 @@ class TrayApp : ApplicationContext
         _reconcileTimer.Stop();
         _updateTimer.Stop();
         _clipTimer.Stop();
+        _standbyTimer.Stop();
         _testForm?.Close();
+        _listeners?.Dispose();
         _engine.Dispose();
         _devices.Dispose();
         _tray.Visible = false;

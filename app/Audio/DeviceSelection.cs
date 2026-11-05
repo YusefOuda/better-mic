@@ -7,6 +7,7 @@ record DeviceSelection(
     string? MicId,
     string? MicName,
     string? CableId,
+    IReadOnlyList<string> CableOutputIds,
     string? OutputId,
     string? OutputName,
     FormFactor? OutputFormFactor,
@@ -27,6 +28,7 @@ record DeviceSelection(
         bool aec = outputId != null && DevicePolicy.IsAecEnabled(settings.EchoCancellation, formFactor);
 
         return new DeviceSelection(micId, captures.FirstOrDefault(d => d.Id == micId)?.Name, cableId,
+            DevicePolicy.CableOutputs(captures),
             outputId, renders.FirstOrDefault(d => d.Id == outputId)?.Name, formFactor, aec);
     }
 }

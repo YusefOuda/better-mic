@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace BetterMic;
 
-enum IconState { Active, Bypassed, Muted, Problem }
+enum IconState { Active, Standby, Bypassed, Muted, Problem }
 
 // Draws the tray icon (a microphone) at runtime, so no .ico asset is needed.
 static class IconRenderer
@@ -13,6 +13,8 @@ static class IconRenderer
         var color = state switch
         {
             IconState.Active => Color.FromArgb(80, 200, 120),
+            // Ready but idle: the active green, faded
+            IconState.Standby => Color.FromArgb(120, 80, 200, 120),
             IconState.Bypassed => Color.FromArgb(160, 160, 160),
             IconState.Muted => Color.FromArgb(235, 70, 60),
             _ => Color.FromArgb(240, 170, 40),

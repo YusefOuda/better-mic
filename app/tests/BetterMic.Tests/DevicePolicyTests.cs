@@ -69,6 +69,19 @@ public class DevicePolicyTests
         Assert.Null(DevicePolicy.PickCableInput([new("spk", "Speakers", false)]));
     }
 
+    [Fact]
+    public void CableOutputsAreTheVirtualCableCaptureDevices()
+    {
+        List<AudioDevice> captures =
+        [
+            new("mic", "Headset Microphone", false),
+            new("cout", "CABLE Output (VB-Audio Virtual Cable)", true),
+            new("nv", "Microphone (NVIDIA Broadcast)", false, IsOtherVirtual: true),
+        ];
+        Assert.Equal(["cout"], DevicePolicy.CableOutputs(captures));
+        Assert.Empty(DevicePolicy.CableOutputs([new("mic", "Headset Microphone", false)]));
+    }
+
     [Theory]
     [InlineData(AecMode.Auto, FormFactor.Speakers, true)]
     [InlineData(AecMode.Auto, FormFactor.DigitalAudioDisplayDevice, true)]
